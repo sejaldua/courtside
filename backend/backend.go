@@ -54,29 +54,11 @@ func GetScheduledGames() []Game {
 			for _, game := range gameDate.Games {
 				// Skip live games — this endpoint doesn't provide quarter/time left;
 				// use GetLiveGames() instead
-				// if game.GameStatus == 2 { // TODO: confirm '2' actually means game is live
-				// 	// 1 = not started, 2 = live, 3 = final?
-				// 	continue
-				// }
-
-				var gameclock string
-				switch game.GameStatusText {
-				case "Final":
-					gameclock = "Final"
-				case "Scheduled":
-					date, _ := time.Parse("2006-01-02T15:04:05Z", game.GameDateEst)
-					t, _ := time.Parse("2006-01-02T15:04:05Z", game.GameTimeEst)
-
-					combined := time.Date(
-							date.Year(), date.Month(), date.Day(),
-							t.Hour(), t.Minute(), 0, 0,
-							time.UTC,
-					)
-
-					gameclock = combined.Format("1/2 3:04 PM")
-				default:
-					gameclock = "Unknown Status: " + game.GameStatusText 
+				if game.GameStatus == 2 { // TODO: confirm '2' actually means game is live
+					// 1 = not started, 2 = live, 3 = final?
+					continue
 				}
+				gameclock := game.GameStatusText
 
 				gamelist = append(gamelist, Game{
 					GameId:    game.GameID,
@@ -102,7 +84,7 @@ func GetLiveGames() []Game {
 	for _, game := range games {
 		var gameclock string
 		if !game.IsGameStart() {
-			gameclock = game.GameEt.Format("1/2 3:04 PM")
+			gameclock = game.GameEt.Format("3:04 pm ET")
 		} else if game.IsFinished() {
 			gameclock = fmt.Sprintf("Final")
 		} else {
