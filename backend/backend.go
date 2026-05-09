@@ -6,6 +6,7 @@ import (
 )
 
 type Game struct {
+	GameId		string
 	HomeTeam  string
 	AwayTeam  string
 	GameClock string
@@ -22,13 +23,16 @@ func GetGames() []Game {
 
 	for _, game := range games {
 		var gameclock string
-		if game.IsFinished() {
-			gameclock = fmt.Sprintf("  Final  ")
+		if !game.IsGameStart() {
+			gameclock = game.GameEt.Format("1/2 3:04 PM")
+		} else if game.IsFinished() {
+			gameclock = fmt.Sprintf("Final")
 		} else {
 			gameclock = fmt.Sprintf("%dQ (%s)", game.Period, game.GameClock)
 		}
 
 		gamelist = append(gamelist, Game {
+			GameId: game.GameId,
 			HomeTeam: game.HomeTeam.TeamName,
 			AwayTeam: game.AwayTeam.TeamName,
 			GameClock: gameclock,
