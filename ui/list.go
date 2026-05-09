@@ -1,8 +1,7 @@
-package main
+package ui
 
 import (
 	"fmt"
-	"os"
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
@@ -57,24 +56,7 @@ func formatGame(g backend.Game) item {
 	return item{title: scoreboard, desc: clock}
 }
 
-func mergeGames(live, scheduled []backend.Game) []backend.Game {
-	seen := make(map[string]bool)
-	merged := make([]backend.Game, 0, len(live)+len(scheduled))
-	for _, g := range live {
-		seen[g.GameId] = true
-		merged = append(merged, g)
-	}
-	for _, g := range scheduled {
-		if !seen[g.GameId] {
-			merged = append(merged, g)
-		}
-	}
-	return merged
-}
-
-func main() {
-	games := mergeGames(backend.GetLiveGames(), backend.GetScheduledGames())
-
+func Run(games []backend.Game) error {
 	items := make([]list.Item, len(games))
 	for i, g := range games {
 		items[i] = formatGame(g)
@@ -84,9 +66,6 @@ func main() {
 	m.list.Title = "NBA Scores"
 
 	p := tea.NewProgram(m)
-
-	if _, err := p.Run(); err != nil {
-		fmt.Println("Error running program:", err)
-		os.Exit(1)
-	}
+	_, err := p.Run()
+	return err
 }
