@@ -7,6 +7,15 @@ import (
 	"github.com/poteto0/go-nba-sdk/types"
 )
 
+func parseGameClock(raw string) string {
+	var mins int
+	var secs float64
+	if _, err := fmt.Sscanf(raw, "PT%dM%fS", &mins, &secs); err != nil {
+		return raw
+	}
+	return fmt.Sprintf("%02d:%02d", mins, int(secs))
+}
+
 type Game struct {
 	GameId		string
 	HomeTeam  string
@@ -88,7 +97,7 @@ func GetLiveGames() []Game {
 		} else if game.IsFinished() {
 			gameclock = fmt.Sprintf("Final")
 		} else {
-			gameclock = fmt.Sprintf("%dQ (%s)", game.Period, game.GameClock)
+			gameclock = fmt.Sprintf("Q%d %s", game.Period, parseGameClock(game.GameClock))
 		}
 
 		gamelist = append(gamelist, Game {
