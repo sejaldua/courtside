@@ -19,15 +19,15 @@ func (i item) Title() string       { return i.title }
 func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string { return i.title }
 
-type model struct {
+type gamelist struct {
 	list list.Model
 }
 
-func (m model) Init() tea.Cmd {
+func (m gamelist) Init() tea.Cmd {
 	return nil
 }
 
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m gamelist) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
@@ -43,7 +43,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m model) View() tea.View {
+func (m gamelist) View() tea.View {
 	v := tea.NewView(docStyle.Render(m.list.View()))
 	v.AltScreen = true
 	return v
@@ -56,15 +56,20 @@ func formatGame(g backend.Game) item {
 	return item{title: scoreboard, desc: clock}
 }
 
-func Run(games []backend.Game) error {
+func newGamesList(games []backend.Game) gamelist {
 	items := make([]list.Item, len(games))
 	for i, g := range games {
 		items[i] = formatGame(g)
 	}
 
-	m := model{list: list.New(items, list.NewDefaultDelegate(), 0, 0)}
+	m := gamelist{list: list.New(items, list.NewDefaultDelegate(), 0, 0)}
 	m.list.Title = "NBA Scores"
 
+	return m
+}
+
+func Run(games []backend.Game) error {
+	m := newGamesList(games)
 	p := tea.NewProgram(m)
 	_, err := p.Run()
 	return err
