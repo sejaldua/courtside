@@ -27,18 +27,23 @@ func (r root) Init() tea.Cmd {
 	return r.list.Init()
 }
 
-func (r root) Update(msg. tea.Msg) (tea.Model, tea.Cmd) {
+func (r root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Quit immediately regardless of view
-	if msg.(type) == tea.KeyPressMsg && msg.String() == "ctrl+c" {
-		return r, tea.Quit
-	}
-
-	// switch msg := msg.(type) {
-	// case tea.KeyPressMsg:
-	// 	switch tea.KeyPressMsg:
-	// 	case "ctrl+c":
-	// 		return m, tea.Quit
+	// if msg.(type) == tea.KeyPressMsg && msg.String() == "ctrl+c" {
+	// 	return r, tea.Quit
 	// }
+	//
+	switch msg := msg.(type) {
+	case tea.KeyPressMsg:
+		if msg.String() == "ctrl+c" {
+			return r, tea.Quit
+		}
+		var cmd tea.Cmd 
+	r.list, cmd = r.list.Update(msg)
+	return r, cmd
+		// case "ctrl+c":
+		// 	return m, tea.Quit
+	}
 
 	switch r.current { // what screen are we viewing?
 	case listview:

@@ -16,15 +16,6 @@ func parseGameClock(raw string) string {
 	return fmt.Sprintf("%02d:%02d", mins, int(secs))
 }
 
-type Game struct {
-	GameId		string
-	HomeTeam  string
-	AwayTeam  string
-	GameClock string
-	HomeScore int
-	AwayScore int
-}
-
 func currentSeason() string {
 	now := time.Now()
 	year := now.Year()
@@ -37,15 +28,21 @@ func currentSeason() string {
 	return fmt.Sprintf("%d-%02d", year, (year+1)%100)
 }
 
-func GetScheduledGames() []Game {
-	if testing {
-		return TestList()
-	}
+type Game struct {
+	GameId    string
+	HomeTeam  string
+	AwayTeam  string
+	GameClock string
+	HomeScore int
+	AwayScore int
+}
+
+func GetGamesForDate(date time.Time) []Game {
 	client := gns.NewClient(nil)
 	result := client.Stats.GetScheduleLeagueV2(
 		&types.ScheduleLeagueV2Params{
 			LeagueID: "00",
-			Season: currentSeason(),
+			Season:   currentSeason(),
 		},
 	)
 
@@ -53,16 +50,14 @@ func GetScheduledGames() []Game {
 		panic(result.Error)
 	}
 
-	//today := time.Now().Format("01/02/2006 12:00:00 AM")
 	gamelist := make([]Game, 0, 20)
 
 	for _, gameDate := range result.Contents.LeagueSchedule.GameDates {
 		gamedate, _ := time.Parse("01/02/2006 15:04:05", gameDate.GameDate)
-		now := time.Now()
-		isToday := gamedate.Year() == now.Year() &&
-				gamedate.Month() == now.Month() &&
-				gamedate.Day() == now.Day()
-		if isToday {
+		sameDay := gamedate.Year() == date.Year() &&
+			gamedate.Month() == date.Month() &&
+			gamedate.Day() == date.Day()
+		if sameDay {
 			for _, game := range gameDate.Games {
 				// Skip live games — this endpoint doesn't provide quarter/time left;
 				// use GetLiveGames() instead
@@ -70,13 +65,11 @@ func GetScheduledGames() []Game {
 					// 1 = not started, 2 = live, 3 = final?
 					continue
 				}
-				gameclock := game.GameStatusText
-
 				gamelist = append(gamelist, Game{
 					GameId:    game.GameID,
 					HomeTeam:  game.HomeTeam.TeamName,
 					AwayTeam:  game.AwayTeam.TeamName,
-					GameClock: gameclock,
+					GameClock: game.GameStatusText,
 					HomeScore: game.HomeTeam.Score,
 					AwayScore: game.AwayTeam.Score,
 				})
@@ -86,10 +79,11 @@ func GetScheduledGames() []Game {
 	return gamelist
 }
 
+func GetScheduledGames() []Game {
+	return GetGamesForDate(time.Now())
+}
+
 func GetLiveGames() []Game {
-	if testing {
-		return TestList()
-	}
 	client := gns.NewClient(nil)
 	result := client.Live.GetScoreBoard(nil)
 
@@ -107,7 +101,7 @@ func GetLiveGames() []Game {
 		}
 
 		gamelist = append(gamelist, Game {
-			GameId: 	 game.GameId,
+			GameId:    game.GameId,
 			HomeTeam:  game.HomeTeam.TeamName,
 			AwayTeam:  game.AwayTeam.TeamName,
 			GameClock: gameclock,
