@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/NolanFogarty/courtside/backend"
 )
 
 // ---- data ----------------------------------------------------------------
@@ -31,6 +32,11 @@ type teamBox struct {
 	tricode string
 	score   int
 	players []playerStat
+
+	// aggregate stats shown in the comparison bar
+	fgPct, fg3Pct float64
+	ftm, fta      int
+	reb, ast, to  int
 }
 
 type playEvent struct {
@@ -84,6 +90,7 @@ var (
 	mutedSty     = lipgloss.NewStyle().Foreground(mutedColor)
 	accentSty    = lipgloss.NewStyle().Bold(true).Foreground(accentColor)
 	hintSty      = lipgloss.NewStyle().Foreground(mutedColor)
+	errSty       = lipgloss.NewStyle().Bold(true).Foreground(homeColor)
 )
 
 // stat-table column widths
@@ -96,23 +103,48 @@ const (
 // ---- model ---------------------------------------------------------------
 
 type detail struct {
+	gameID        string
 	game          gameDetail
+	loading       bool
+	err           error
 	scroll        int // play-by-play scroll offset (0 = newest at top)
 	width, height int
 }
 
-func newDetail(width, height int) detail {
-	return detail{game: dummyGame(), width: width, height: height}
+// newDetail seeds the header from the list selection (team names and scores are
+// known immediately) and marks the box score / play-by-play as still loading.
+func newDetail(g backend.Game, width, height int) detail {
+	d := detail{gameID: g.GameId, loading: true, width: width, height: height}
+	d.game.away = teamBox{name: g.AwayTeam, score: g.AwayScore}
+	d.game.home = teamBox{name: g.HomeTeam, score: g.HomeScore}
+	return d
+}
+
+// gameDetailMsg carries the result of the async GetGameDetail fetch.
+type gameDetailMsg struct {
+	detail backend.GameDetail
+	err    error
 }
 
 func (m detail) Init() tea.Cmd {
-	return nil
+	id := m.gameID
+	return func() tea.Msg {
+		d, err := backend.GetGameDetail(id)
+		return gameDetailMsg{detail: d, err: err}
+	}
 }
 
 func (m detail) Update(msg tea.Msg) (detail, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+	case gameDetailMsg:
+		m.loading = false
+		if msg.err != nil {
+			m.err = msg.err
+		} else {
+			m.game = toGameDetail(msg.detail)
+		}
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "up", "k":
@@ -126,6 +158,32 @@ func (m detail) Update(msg tea.Msg) (detail, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// toGameDetail maps the backend's GameDetail into the view's render types.
+func toGameDetail(d backend.GameDetail) gameDetail {
+	g := gameDetail{away: toTeamBox(d.Away), home: toTeamBox(d.Home)}
+	g.plays = make([]playEvent, len(d.Plays))
+	for i, p := range d.Plays {
+		g.plays[i] = playEvent{period: p.Period, clock: p.Clock, team: p.Team, desc: p.Desc}
+	}
+	return g
+}
+
+func toTeamBox(t backend.TeamDetail) teamBox {
+	tb := teamBox{
+		name: t.Name, tricode: t.Tricode, score: t.Score,
+		fgPct: t.FGPct, fg3Pct: t.FG3Pct, ftm: t.FTM, fta: t.FTA,
+		reb: t.Reb, ast: t.Ast, to: t.To,
+	}
+	tb.players = make([]playerStat, len(t.Players))
+	for i, p := range t.Players {
+		tb.players[i] = playerStat{
+			name: p.Name, pts: p.Pts, ast: p.Ast, reb: p.Reb,
+			blk: p.Blk, to: p.To, plusMinus: p.PlusMinus,
+		}
+	}
+	return tb
 }
 
 // maxScroll is the furthest the play-by-play feed can scroll back.
@@ -162,12 +220,19 @@ func (m detail) View() tea.View {
 		width = 40
 	}
 
-	body := lipgloss.JoinVertical(
-		lipgloss.Left,
-		m.renderHeader(width),
-		"",
-		m.renderMain(width),
-	)
+	var body string
+	switch {
+	case m.err != nil:
+		body = lipgloss.JoinVertical(lipgloss.Left, m.renderHeader(width), "",
+			lipgloss.PlaceHorizontal(width, lipgloss.Center,
+				errSty.Render("Failed to load game: "+m.err.Error())))
+	case m.loading:
+		body = lipgloss.JoinVertical(lipgloss.Left, m.renderHeader(width), "",
+			lipgloss.PlaceHorizontal(width, lipgloss.Center,
+				mutedSty.Render("Loading game data…")))
+	default:
+		body = lipgloss.JoinVertical(lipgloss.Left, m.renderHeader(width), "", m.renderMain(width))
+	}
 	hint := hintSty.Render("q back · ↑/↓ or j/k scroll")
 
 	// Push the hint to the bottom of the screen with a spacer that fills the
@@ -306,25 +371,43 @@ const (
 	barTeamW    = playerTableW - 6*barStatW
 )
 
-// barStatRows returns the six columns shown in the horizontal team-stats bar,
-// in display order: shooting (FG%, 3P%, FTM) then team (REB, AST, TO).
-func barStatRows() []statRow {
-	want := []string{"FG%", "3P%", "FTM", "REB", "AST", "TO"}
-	byLabel := make(map[string]statRow, len(want))
-	for _, r := range teamStatRows() {
-		byLabel[r.label] = r
+// barStatRows builds the six columns shown in the horizontal team-stats bar
+// from the game's aggregate stats, in display order: shooting (FG%, 3P%, FTM)
+// then team (REB, AST, TO).
+func (m detail) barStatRows() []statRow {
+	a, h := m.game.away, m.game.home
+	return []statRow{
+		pctRow("FG%", a.fgPct, h.fgPct),
+		pctRow("3P%", a.fg3Pct, h.fg3Pct),
+		ftmRow("FTM", a.ftm, a.fta, h.ftm, h.fta),
+		intRow("REB", a.reb, h.reb, false),
+		intRow("AST", a.ast, h.ast, false),
+		intRow("TO", a.to, h.to, true), // fewer turnovers leads
 	}
-	rows := make([]statRow, len(want))
-	for i, l := range want {
-		rows[i] = byLabel[l]
-	}
-	return rows
+}
+
+func pctRow(label string, a, h float64) statRow {
+	return statRow{label: label,
+		away: fmt.Sprintf("%.1f", a), home: fmt.Sprintf("%.1f", h),
+		awayKey: a, homeKey: h}
+}
+
+func ftmRow(label string, am, aa, hm, ha int) statRow {
+	return statRow{label: label,
+		away: fmt.Sprintf("%d/%d", am, aa), home: fmt.Sprintf("%d/%d", hm, ha),
+		awayKey: float64(am), homeKey: float64(hm)} // more made free throws leads
+}
+
+func intRow(label string, a, h int, lowerBetter bool) statRow {
+	return statRow{label: label,
+		away: fmt.Sprintf("%d", a), home: fmt.Sprintf("%d", h),
+		awayKey: float64(a), homeKey: float64(h), lowerBetter: lowerBetter}
 }
 
 // renderTeamBar renders the horizontal team-stats bar that sits between the two
 // player tables: a header row of column labels followed by one row per team.
 func (m detail) renderTeamBar() string {
-	rows := barStatRows()
+	rows := m.barStatRows()
 
 	hdr := pad("TEAM", barTeamW, false)
 	for i, r := range rows {

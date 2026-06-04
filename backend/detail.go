@@ -1,0 +1,119 @@
+package backend
+
+import (
+	"context"
+
+	nba "github.com/NolanFogarty/nba-sdk"
+	"github.com/NolanFogarty/nba-sdk/stats"
+)
+
+// PlayerLine is one player's box-score line.
+type PlayerLine struct {
+	Name                   string
+	Pts, Ast, Reb, Blk, To int
+	PlusMinus              int
+}
+
+// TeamDetail is one team's full box score plus the aggregate stats shown in the
+// comparison bar.
+type TeamDetail struct {
+	Name, Tricode string
+	Score         int
+	Players       []PlayerLine
+
+	FGPct, FG3Pct float64 // shooting percentages, 0-100
+	FTM, FTA      int      // free throws made / attempted
+	Reb, Ast, To  int
+}
+
+// PlayLine is a single play-by-play event. Team is the tricode, empty for
+// neutral events (timeouts, period boundaries, etc.).
+type PlayLine struct {
+	Period int
+	Clock  string // "MM:SS"
+	Team   string
+	Desc   string
+}
+
+// GameDetail is everything the detail screen needs for one game.
+type GameDetail struct {
+	Away, Home TeamDetail
+	Plays      []PlayLine // newest first
+}
+
+// GetGameDetail fetches the traditional box score and play-by-play for a game
+// and projects them into a GameDetail.
+func GetGameDetail(gameID string) (GameDetail, error) {
+	client := nba.NewClient()
+	ctx := context.Background()
+
+	box, err := client.Stats.BoxScoreTraditionalV3(ctx, gameID)
+	if err != nil {
+		return GameDetail{}, err
+	}
+	pbp, err := client.Stats.PlayByPlayV3(ctx, gameID)
+	if err != nil {
+		return GameDetail{}, err
+	}
+
+	d := GameDetail{
+		Away: toTeamDetail(box.BoxScoreTraditional.AwayTeam),
+		Home: toTeamDetail(box.BoxScoreTraditional.HomeTeam),
+	}
+
+	// Actions come oldest-first; the feed wants newest-first.
+	actions := pbp.Game.Actions
+	d.Plays = make([]PlayLine, 0, len(actions))
+	for i := len(actions) - 1; i >= 0; i-- {
+		a := actions[i]
+		d.Plays = append(d.Plays, PlayLine{
+			Period: a.Period,
+			Clock:  parseGameClock(a.Clock),
+			Team:   a.TeamTricode,
+			Desc:   a.Description,
+		})
+	}
+	return d, nil
+}
+
+func toTeamDetail(t stats.BoxTeam) TeamDetail {
+	s := t.Statistics
+	td := TeamDetail{
+		Name:    t.TeamName,
+		Tricode: t.TeamTricode,
+		Score:   s.Points,
+		FGPct:   pct(s.FieldGoalsMade, s.FieldGoalsAttempted),
+		FG3Pct:  pct(s.ThreePointersMade, s.ThreePointersAttempted),
+		FTM:     s.FreeThrowsMade,
+		FTA:     s.FreeThrowsAttempted,
+		Reb:     s.ReboundsTotal,
+		Ast:     s.Assists,
+		To:      s.Turnovers,
+	}
+
+	for _, p := range t.Players {
+		name := p.NameI
+		if name == "" {
+			name = p.FamilyName
+		}
+		ps := p.Statistics
+		td.Players = append(td.Players, PlayerLine{
+			Name:      name,
+			Pts:       ps.Points,
+			Ast:       ps.Assists,
+			Reb:       ps.ReboundsTotal,
+			Blk:       ps.Blocks,
+			To:        ps.Turnovers,
+			PlusMinus: int(ps.PlusMinusPoints),
+		})
+	}
+	return td
+}
+
+// pct returns made/attempted as a 0-100 percentage, or 0 when none attempted.
+func pct(made, attempted int) float64 {
+	if attempted == 0 {
+		return 0
+	}
+	return float64(made) / float64(attempted) * 100
+}
