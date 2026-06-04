@@ -44,6 +44,10 @@ func (m gamelist) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m gamelist) View() tea.View {
+	// if m.current = "listview"
+	// return v.listview..
+	// if current = "detailedview"
+	// return m.detailedview
 	v := tea.NewView(docStyle.Render(m.list.View()))
 	v.AltScreen = true
 	return v
@@ -69,7 +73,7 @@ func newGamesList(games []backend.Game) gamelist {
 }
 
 func Run(games []backend.Game) error {
-	m := newGamesList(games)
+	m := newRoot(games)
 	p := tea.NewProgram(m)
 	_, err := p.Run()
 	return err
