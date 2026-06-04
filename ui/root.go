@@ -44,6 +44,15 @@ func (r root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return r, cmd
 	}
 
+	// Day navigation messages always belong to the list, even if the user has
+	// since opened the detail view.
+	switch msg.(type) {
+	case gamesLoadedMsg, daySettledMsg:
+		updated, cmd := r.list.Update(msg)
+		r.list = updated.(gamelist)
+		return r, cmd
+	}
+
 	switch r.current {
 	case listview:
 		// Enter on a selected item navigates to the detail screen,
