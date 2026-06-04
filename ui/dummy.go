@@ -1,5 +1,23 @@
 package ui
 
+// teamStatRows returns the away-vs-home team comparison rows. For TO and PF the
+// lower value is the "leader" (lowerBetter), otherwise the higher value leads.
+func teamStatRows() []statRow {
+	return []statRow{
+		{label: "FG%", away: "40.0", home: "35.7", awayKey: 40.0, homeKey: 35.7},
+		{label: "3P%", away: "33.3", home: "26.7", awayKey: 33.3, homeKey: 26.7},
+		{label: "FT%", away: "0.0", home: "87.5", awayKey: 0.0, homeKey: 87.5},
+		{label: "FTM", away: "0/0", home: "7/8", awayKey: 0, homeKey: 7},
+		{label: "REB", away: "20", home: "17", awayKey: 20, homeKey: 17},
+		{label: "AST", away: "7", home: "5", awayKey: 7, homeKey: 5},
+		{label: "TO", away: "5", home: "3", awayKey: 5, homeKey: 3, lowerBetter: true},
+		{label: "BLK", away: "2", home: "3", awayKey: 2, homeKey: 3},
+		{label: "PF", away: "8", home: "5", awayKey: 8, homeKey: 5, lowerBetter: true},
+		{label: "PAINT", away: "16", home: "12", awayKey: 16, homeKey: 12},
+		{label: "BENCH", away: "10", home: "10", awayKey: 10, homeKey: 10},
+	}
+}
+
 // dummyGame returns a fully populated game for the detail view until the
 // BoxScoreTraditionalV3 / PlayByPlayV3 endpoints are wired in.
 func dummyGame() gameDetail {
@@ -16,6 +34,11 @@ func dummyGame() gameDetail {
 				{name: "J. Hart", pts: 9, ast: 6, reb: 8, blk: 0, to: 1, plusMinus: 3},
 				{name: "M. Robinson", pts: 6, ast: 0, reb: 7, blk: 2, to: 1, plusMinus: -2},
 				{name: "D. DiVincenzo", pts: 0, ast: 0, reb: 0, blk: 0, to: 0, plusMinus: 0},
+				{name: "A. Portis", pts: 4, ast: 1, reb: 3, blk: 0, to: 0, plusMinus: -1},
+				{name: "M. Sensabaugh", pts: 2, ast: 0, reb: 1, blk: 0, to: 1, plusMinus: -3},
+				{name: "T. Booker", pts: 0, ast: 1, reb: 0, blk: 0, to: 0, plusMinus: -1},
+				{name: "J. McConnell", pts: 0, ast: 0, reb: 0, blk: 0, to: 0, plusMinus: 0},
+				{name: "N. Powell", pts: 0, ast: 0, reb: 0, blk: 0, to: 0, plusMinus: 0},
 			},
 		},
 		home: teamBox{
@@ -30,6 +53,11 @@ func dummyGame() gameDetail {
 				{name: "J. Sochan", pts: 8, ast: 3, reb: 6, blk: 1, to: 2, plusMinus: 2},
 				{name: "C. Castle", pts: 7, ast: 5, reb: 2, blk: 0, to: 1, plusMinus: -1},
 				{name: "L. Kornet", pts: 0, ast: 0, reb: 0, blk: 0, to: 0, plusMinus: 0},
+				{name: "K. Johnson", pts: 5, ast: 1, reb: 2, blk: 0, to: 1, plusMinus: 1},
+				{name: "P. Collins", pts: 3, ast: 0, reb: 2, blk: 1, to: 0, plusMinus: -2},
+				{name: "S. Gay", pts: 2, ast: 1, reb: 1, blk: 0, to: 0, plusMinus: -1},
+				{name: "Z. Duran", pts: 0, ast: 0, reb: 0, blk: 0, to: 0, plusMinus: 0},
+				{name: "J. Champagnie", pts: 0, ast: 0, reb: 0, blk: 0, to: 0, plusMinus: 0},
 			},
 		},
 		// newest first

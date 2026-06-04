@@ -45,6 +45,28 @@ type gameDetail struct {
 	plays      []playEvent // newest first
 }
 
+// statRow is one row of the team-comparison table. away/home are the display
+// strings; awayKey/homeKey are the numeric values used to decide which side to
+// highlight. When lowerBetter is true the smaller value is the "leader".
+type statRow struct {
+	label            string
+	away, home       string
+	awayKey, homeKey float64
+	lowerBetter      bool
+}
+
+// leader reports which side to highlight. Ties highlight neither.
+func (r statRow) leader() (away, home bool) {
+	if r.awayKey == r.homeKey {
+		return false, false
+	}
+	awayWins := r.awayKey > r.homeKey
+	if r.lowerBetter {
+		awayWins = r.awayKey < r.homeKey
+	}
+	return awayWins, !awayWins
+}
+
 // ---- styles --------------------------------------------------------------
 
 var (
@@ -52,12 +74,15 @@ var (
 	homeColor    = lipgloss.Color("203") // red
 	mutedColor   = lipgloss.Color("245")
 	dimColor     = lipgloss.Color("240")
+	accentColor  = lipgloss.Color("214")
 	headerBarSty = lipgloss.NewStyle().Bold(true).Padding(0, 1).
 			Border(lipgloss.RoundedBorder()).BorderForeground(dimColor)
 	panelSty = lipgloss.NewStyle().Padding(0, 1).
 			Border(lipgloss.RoundedBorder()).BorderForeground(dimColor)
 	colHeaderSty = lipgloss.NewStyle().Bold(true).Foreground(mutedColor)
 	dimRowSty    = lipgloss.NewStyle().Foreground(dimColor)
+	mutedSty     = lipgloss.NewStyle().Foreground(mutedColor)
+	accentSty    = lipgloss.NewStyle().Bold(true).Foreground(accentColor)
 	hintSty      = lipgloss.NewStyle().Foreground(mutedColor)
 )
 
@@ -112,15 +137,18 @@ func (m detail) maxScroll() int {
 	return max
 }
 
-// pbpVisible is how many play-by-play lines fit at once, given the terminal
-// height left over after the header and stat tables.
+// leftColumnHeight is the rendered height of the left column (both player
+// tables plus the team-stats bar between them).
+func (m detail) leftColumnHeight() int {
+	return lipgloss.Height(m.renderPlayerColumn())
+}
+
+// pbpVisible is how many play-by-play lines show at once: enough to fill the
+// play-by-play box to the full height of the left column.
 func (m detail) pbpVisible() int {
-	v := m.height - 24 // rough reserve for header + tables + chrome
-	if v < 6 {
-		v = 6
-	}
-	if v > 30 {
-		v = 30
+	v := m.leftColumnHeight() - 4 // box border (2) + title & divider (2)
+	if v < 4 {
+		v = 4
 	}
 	return v
 }
@@ -128,22 +156,29 @@ func (m detail) pbpVisible() int {
 // ---- view ----------------------------------------------------------------
 
 func (m detail) View() tea.View {
-	hFrame, _ := docStyle.GetFrameSize()
+	hFrame, vFrame := docStyle.GetFrameSize()
 	width := m.width - hFrame
 	if width < 40 {
 		width = 40
 	}
 
-	sections := lipgloss.JoinVertical(
+	body := lipgloss.JoinVertical(
 		lipgloss.Left,
 		m.renderHeader(width),
 		"",
-		m.renderTables(width),
-		"",
-		m.renderPlayByPlay(width),
-		"",
-		hintSty.Render("q back · ↑/↓ or j/k scroll"),
+		m.renderMain(width),
 	)
+	hint := hintSty.Render("q back · ↑/↓ or j/k scroll")
+
+	// Push the hint to the bottom of the screen with a spacer that fills the
+	// leftover height between the body and the hint.
+	spacerH := m.height - vFrame - lipgloss.Height(body) - lipgloss.Height(hint)
+	if spacerH < 1 {
+		spacerH = 1
+	}
+	spacer := lipgloss.NewStyle().Height(spacerH).Render("")
+
+	sections := lipgloss.JoinVertical(lipgloss.Left, body, spacer, hint)
 
 	v := tea.NewView(docStyle.Render(sections))
 	v.AltScreen = true
@@ -160,13 +195,66 @@ func (m detail) renderHeader(width int) string {
 	return lipgloss.PlaceHorizontal(width, lipgloss.Center, bar)
 }
 
-// renderTables renders the two team stat tables side by side.
-func (m detail) renderTables(width int) string {
-	gap := "  "
+// renderMain lays out the two-column body: the player tables (with the team
+// stats bar between them) stacked on the left, and the play-by-play feed
+// filling the right, splitting the width down the middle.
+func (m detail) renderMain(width int) string {
+	const gap = 2
+	colW := (width - gap) / 2
+
+	left := m.renderPlayerColumn()
+	right := m.renderInfoColumn(colW, lipgloss.Height(left))
+
+	// Right-align the (fixed-width) left column so it sits against the center
+	// divide; the play-by-play box fills the right half. Contents stay left-
+	// aligned.
+	leftCol := lipgloss.PlaceHorizontal(colW, lipgloss.Right, left)
+
+	return lipgloss.JoinHorizontal(lipgloss.Top, leftCol, "  ", right)
+}
+
+// renderPlayerColumn stacks the away player table, the horizontal team-stats
+// bar, and the home player table vertically.
+func (m detail) renderPlayerColumn() string {
 	away := m.renderTeamTable(m.game.away, awayColor)
+	bar := m.renderTeamBar()
 	home := m.renderTeamTable(m.game.home, homeColor)
-	tables := lipgloss.JoinHorizontal(lipgloss.Top, away, gap, home)
-	return lipgloss.PlaceHorizontal(width, lipgloss.Center, tables)
+	return lipgloss.JoinVertical(lipgloss.Left, away, "", bar, "", home)
+}
+
+// renderInfoColumn renders the play-by-play box, sized to its own content width
+// (bounded by w) and stretched to the full height of the left column.
+func (m detail) renderInfoColumn(w, height int) string {
+	maxW := w - 4 // box border (2) + padding (2)
+	if maxW < 24 {
+		maxW = 24
+	}
+	pbp := m.renderPBPColumn(m.pbpWidth(maxW))
+
+	// Style.Height sets the box's total (border-inclusive) height, so target the
+	// left column's height directly. Grow if the content would be taller.
+	target := height
+	if nat := lipgloss.Height(pbp) + 2; target < nat {
+		target = nat
+	}
+	return panelSty.Height(target).Render(pbp)
+}
+
+// pbpWidth is the content width the play-by-play feed needs to show its longest
+// event line without truncation, capped at max. Computed over all plays (not
+// just the visible window) so the box width stays stable while scrolling.
+func (m detail) pbpWidth(max int) int {
+	maxDesc := 0
+	for _, p := range m.game.plays {
+		if dw := lipgloss.Width(p.desc); dw > maxDesc {
+			maxDesc = dw
+		}
+	}
+	w := wWhen + 2 + wTag + 2 + maxDesc
+	if w > max {
+		w = max
+	}
+	return w
 }
 
 func (m detail) renderTeamTable(t teamBox, teamColor color.Color) string {
@@ -207,8 +295,77 @@ func (m detail) renderTeamTable(t teamBox, teamColor color.Color) string {
 	return panelSty.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
 }
 
-// renderPlayByPlay renders the scrollable feed, newest first.
-func (m detail) renderPlayByPlay(width int) string {
+// playerTableW is the width of a player-table row, matched by the team-stats
+// bar so it spans the player tables exactly.
+const playerTableW = wName + 5*wNum + wPM + 6 // 6 single-space separators
+
+// team-stats bar layout: TEAM column + 3 shooting columns + 3
+// team columns, summing to playerTableW.
+const (
+	barStatW    = 6
+	barTeamW    = playerTableW - 6*barStatW
+)
+
+// barStatRows returns the six columns shown in the horizontal team-stats bar,
+// in display order: shooting (FG%, 3P%, FTM) then team (REB, AST, TO).
+func barStatRows() []statRow {
+	want := []string{"FG%", "3P%", "FTM", "REB", "AST", "TO"}
+	byLabel := make(map[string]statRow, len(want))
+	for _, r := range teamStatRows() {
+		byLabel[r.label] = r
+	}
+	rows := make([]statRow, len(want))
+	for i, l := range want {
+		rows[i] = byLabel[l]
+	}
+	return rows
+}
+
+// renderTeamBar renders the horizontal team-stats bar that sits between the two
+// player tables: a header row of column labels followed by one row per team.
+func (m detail) renderTeamBar() string {
+	rows := barStatRows()
+
+	hdr := pad("TEAM", barTeamW, false)
+	for i, r := range rows {
+		if i == 3 { // gap separating the shooting and team groups
+//			hdr += strings.Repeat(" ", barGroupGap)
+		}
+		hdr += pad(r.label, barStatW, true)
+	}
+
+	content := lipgloss.JoinVertical(lipgloss.Left,
+		colHeaderSty.Render(hdr),
+		m.barTeamRow(rows, m.game.away.tricode, awayColor, true),
+		m.barTeamRow(rows, m.game.home.tricode, homeColor, false),
+	)
+	return panelSty.Render(content)
+}
+
+// barTeamRow renders one team's row of the bar, highlighting the cells where
+// this team leads.
+func (m detail) barTeamRow(rows []statRow, tricode string, teamColor color.Color, isAway bool) string {
+	row := lipgloss.NewStyle().Bold(true).Foreground(teamColor).
+		Render(pad(tricode, barTeamW, false))
+	for _, r := range rows {
+		val, leads := r.home, false
+		awayLeads, homeLeads := r.leader()
+		if isAway {
+			val, leads = r.away, awayLeads
+		} else {
+			leads = homeLeads
+		}
+		cell := pad(val, barStatW, true)
+		if leads {
+			cell = accentSty.Render(cell)
+		}
+		row += cell
+	}
+	return row
+}
+
+// renderPBPColumn renders the scrollable play-by-play feed, newest first.
+func (m detail) renderPBPColumn(w int) string {
 	visible := m.pbpVisible()
 	plays := m.game.plays
 	start := m.scroll
@@ -220,36 +377,55 @@ func (m detail) renderPlayByPlay(width int) string {
 		end = len(plays)
 	}
 
-	lines := make([]string, 0, visible+1)
 	title := colHeaderSty.Render("PLAY-BY-PLAY")
 	if start > 0 {
-		title += hintSty.Render(fmt.Sprintf("   ↑ %d earlier", start))
+		title += hintSty.Render(fmt.Sprintf("   ↑ %d more", start))
 	}
-	lines = append(lines, title)
+	lines := []string{title, dimRowSty.Render(strings.Repeat("─", w))}
 
 	for _, p := range plays[start:end] {
-		lines = append(lines, renderPlay(p, m.game.home.tricode))
+		lines = append(lines, renderPlay(p, m.game.home.tricode, w))
 	}
 
-	body := lipgloss.JoinVertical(lipgloss.Left, lines...)
-	return panelSty.Width(width - 2).Render(body)
+	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
-func renderPlay(p playEvent, homeTricode string) string {
-	when := fmt.Sprintf("Q%d %5s", p.period, p.clock)
-	when = lipgloss.NewStyle().Foreground(mutedColor).Render(pad(when, 9, false))
+// play-by-play line layout: "Q2 08:44" (8) + gap + "[NYK]" (5) + gap + desc
+const (
+	wWhen = 8
+	wTag  = 5
+)
+
+func renderPlay(p playEvent, homeTricode string, width int) string {
+	when := mutedSty.Render(pad(fmt.Sprintf("Q%d %s", p.period, mmss(p.clock)), wWhen, false))
+
+	descW := width - wWhen - 2 - wTag - 2
+	if descW < 4 {
+		descW = 4
+	}
 
 	if p.team == "" {
-		// Neutral event (timeout, foul, etc.) — muted, no team tag.
-		return when + "  " + lipgloss.NewStyle().Foreground(dimColor).Italic(true).Render(p.desc)
+		// Neutral event (timeout, jump ball, end of period) — fully muted.
+		tag := dimRowSty.Render(pad("---", wTag, false))
+		return when + "  " + tag + "  " + dimRowSty.Italic(true).Render(truncate(p.desc, descW))
 	}
 
 	tagColor := awayColor
 	if p.team == homeTricode {
 		tagColor = homeColor
 	}
-	tag := lipgloss.NewStyle().Bold(true).Foreground(tagColor).Render(fmt.Sprintf("[%s]", p.team))
-	return when + "  " + pad(tag, lipgloss.Width(tag), false) + "  " + p.desc
+	tag := lipgloss.NewStyle().Bold(true).Foreground(tagColor).
+		Render(pad("["+p.team+"]", wTag, false))
+	return when + "  " + tag + "  " + truncate(p.desc, descW)
+}
+
+// mmss normalizes a "M:SS" clock to zero-padded "MM:SS".
+func mmss(c string) string {
+	var m, s int
+	if _, err := fmt.Sscanf(c, "%d:%d", &m, &s); err != nil {
+		return c
+	}
+	return fmt.Sprintf("%02d:%02d", m, s)
 }
 
 // ---- helpers -------------------------------------------------------------
