@@ -13,6 +13,7 @@ var docStyle = lipgloss.NewStyle().Margin(1, 2)
 
 type item struct {
 	title, desc string
+	game        backend.Game
 }
 
 func (i item) Title() string       { return i.title }
@@ -57,7 +58,7 @@ func formatGame(g backend.Game) item {
 	scoreboard := fmt.Sprintf("%-13s %3d - %-3d %13s", g.AwayTeam, g.AwayScore, g.HomeScore, g.HomeTeam)
 	pad := (len(scoreboard) - len(g.GameClock)) / 2
 	clock := fmt.Sprintf("%*s", pad+len(g.GameClock), g.GameClock)
-	return item{title: scoreboard, desc: clock}
+	return item{title: scoreboard, desc: clock, game: g}
 }
 
 func newGamesList(games []backend.Game) gamelist {

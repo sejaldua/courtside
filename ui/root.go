@@ -50,10 +50,10 @@ func (r root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// unless the list is currently being filtered.
 		if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "enter" &&
 			r.list.list.FilterState() != list.Filtering {
-			if _, ok := r.list.list.SelectedItem().(item); ok {
-				r.detail = newDetail(r.width, r.height)
+			if sel, ok := r.list.list.SelectedItem().(item); ok {
+				r.detail = newDetail(sel.game, r.width, r.height)
 				r.current = detailview
-				return r, nil
+				return r, r.detail.Init() // kick off the async fetch
 			}
 		}
 
