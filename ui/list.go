@@ -122,7 +122,7 @@ func (m *gamelist) applyGames(games []backend.Game) tea.Cmd {
 
 func (m gamelist) title() string {
 	label := m.day.Format("Mon Jan 2")
-	if sameDay(m.day, time.Now()) {
+	if sameDay(m.day, nbaToday()) {
 		label = "Today · " + label
 	}
 	t := "NBA Scores — " + label
@@ -137,6 +137,16 @@ func (m gamelist) title() string {
 
 func sameDay(a, b time.Time) bool {
 	return a.Year() == b.Year() && a.YearDay() == b.YearDay()
+}
+
+// nbaToday returns the current date in US Eastern time, which is what the NBA's
+// schedule endpoints key game dates on. Falls back to local time if the zone
+// database is unavailable.
+func nbaToday() time.Time {
+	if loc, err := time.LoadLocation("America/New_York"); err == nil {
+		return time.Now().In(loc)
+	}
+	return time.Now()
 }
 
 func (m gamelist) View() tea.View {
@@ -164,7 +174,7 @@ func newGamesList(games []backend.Game) gamelist {
 
 	m := gamelist{
 		list: list.New(items, list.NewDefaultDelegate(), 0, 0),
-		day:  time.Now(),
+		day:  nbaToday(),
 	}
 
 	// Repurpose ←/→ and h/l for day navigation; keep paging on pgup/pgdown.
