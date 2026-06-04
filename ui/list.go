@@ -2,10 +2,12 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/NolanFogarty/courtside/backend"
@@ -23,11 +25,14 @@ func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string { return i.title }
 
 type gamelist struct {
-	list    list.Model
-	day     time.Time // the date currently being viewed
-	seq     int       // bumped on each day change; debounces rapid navigation
-	loading bool
-	err     error
+	list     list.Model
+	day      time.Time // the date currently being viewed
+	seq      int       // bumped on each day change; debounces rapid navigation
+	loading  bool
+	err      error
+	entering bool // "go to date" input mode
+	input    textinput.Model
+	height   int // terminal height, for bottom-anchoring the empty state
 }
 
 // daySettledMsg fires after a short pause following a day change; the fetch only
@@ -49,23 +54,43 @@ func (m gamelist) Init() tea.Cmd {
 }
 
 func (m gamelist) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Keep the list sized in every mode.
+	if ws, ok := msg.(tea.WindowSizeMsg); ok {
+		m.height = ws.Height
+		h, v := docStyle.GetFrameSize()
+		m.list.SetSize(ws.Width-h, ws.Height-v)
+	}
+
+	// While typing a date, the input owns every message (keys to edit, others
+	// to drive the cursor blink).
+	if m.entering {
+		if key, ok := msg.(tea.KeyPressMsg); ok {
+			if key.String() == "ctrl+c" {
+				return m, tea.Quit
+			}
+			return m.updateDateInput(key)
+		}
+		var cmd tea.Cmd
+		m.input, cmd = m.input.Update(msg)
+		return m, cmd
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
 		}
-		// Step the viewed date, unless the user is typing a filter.
+		// Day navigation (unless typing a filter).
 		if m.list.FilterState() != list.Filtering {
 			switch msg.String() {
+			case "g":
+				return m.startDateInput()
 			case "left", "h":
 				return m.gotoDay(-1)
 			case "right", "l":
 				return m.gotoDay(1)
 			}
 		}
-	case tea.WindowSizeMsg:
-		h, v := docStyle.GetFrameSize()
-		m.list.SetSize(msg.Width-h, msg.Height-v)
 	case daySettledMsg:
 		if msg.seq != m.seq {
 			return m, nil // superseded by a newer day change; don't fetch
@@ -102,6 +127,68 @@ func (m gamelist) gotoDay(delta int) (gamelist, tea.Cmd) {
 	return m, tea.Tick(fetchDebounce, func(time.Time) tea.Msg {
 		return daySettledMsg{seq: seq}
 	})
+}
+
+// startDateInput enters "go to date" mode, focusing a fresh text input.
+func (m gamelist) startDateInput() (gamelist, tea.Cmd) {
+	m.entering = true
+	m.input.Reset()
+	cmd := m.input.Focus()
+	return m, cmd
+}
+
+// updateDateInput handles keys while typing a date: Enter jumps, Esc cancels,
+// everything else edits the field.
+func (m gamelist) updateDateInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.entering = false
+		m.input.Blur()
+		return m, nil
+	case "enter":
+		day, ok := parseDate(m.input.Value())
+		m.entering = false
+		m.input.Blur()
+		if !ok {
+			return m, nil // invalid input; stay on the current day
+		}
+		return m.jumpToDay(day)
+	}
+
+	var cmd tea.Cmd
+	m.input, cmd = m.input.Update(msg)
+	return m, cmd
+}
+
+// jumpToDay switches directly to an absolute date and fetches it immediately
+// (no debounce — the user explicitly asked for this date).
+func (m gamelist) jumpToDay(day time.Time) (gamelist, tea.Cmd) {
+	m.day = day
+	m.loading = true
+	m.err = nil
+	m.seq++ // invalidate any pending day-navigation debounce ticks
+	m.list.Title = m.title()
+	return m, fetchGames(m.day)
+}
+
+// parseDate accepts a few common date formats; year-less forms assume the
+// current (ET) year.
+func parseDate(s string) (time.Time, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range []string{"2006-01-02", "1/2/2006", "01/02/2006", "Jan 2 2006", "Jan 2, 2006"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, true
+		}
+	}
+	for _, layout := range []string{"1/2", "01/02", "Jan 2"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return time.Date(nbaToday().Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC), true
+		}
+	}
+	return time.Time{}, false
 }
 
 func fetchGames(day time.Time) tea.Cmd {
@@ -150,11 +237,43 @@ func nbaToday() time.Time {
 }
 
 func (m gamelist) View() tea.View {
-	// if m.current = "listview"
-	// return v.listview..
-	// if current = "detailedview"
-	// return m.detailedview
-	v := tea.NewView(docStyle.Render(m.list.View()))
+	// While entering a date, show the input prompt in the title area. Drop the
+	// Title chip's background so the prompt and typed text render with one
+	// consistent style (this mirrors how the list draws its own filter input).
+	if m.entering {
+		m.list.Styles.Title = lipgloss.NewStyle()
+		m.list.Title = m.input.View()
+	}
+
+	var content string
+	if len(m.list.Items()) == 0 {
+		// Hide the list entirely when empty; show just the title and a single
+		// message (the bubbles list would otherwise render "No items." twice).
+		note := "No games on this date."
+		if m.loading {
+			note = "Loading…"
+		}
+		top := lipgloss.JoinVertical(
+			lipgloss.Left,
+			m.list.Styles.Title.Render(m.list.Title),
+			"",
+			lipgloss.NewStyle().Faint(true).Render(note),
+		)
+		hint := lipgloss.NewStyle().Faint(true).Render("←/h prev day · →/l next day · g go to date")
+
+		// Push the hint to the bottom of the screen.
+		_, vFrame := docStyle.GetFrameSize()
+		spacerH := m.height - vFrame - lipgloss.Height(top) - lipgloss.Height(hint)
+		if spacerH < 1 {
+			spacerH = 1
+		}
+		spacer := lipgloss.NewStyle().Height(spacerH).Render("")
+		content = lipgloss.JoinVertical(lipgloss.Left, top, spacer, hint)
+	} else {
+		content = m.list.View()
+	}
+
+	v := tea.NewView(docStyle.Render(content))
 	v.AltScreen = true
 	return v
 }
@@ -172,17 +291,25 @@ func newGamesList(games []backend.Game) gamelist {
 		items[i] = formatGame(g)
 	}
 
+	ti := textinput.New()
+	ti.Prompt = "Go to date (YYYY-MM-DD): "
+	ti.CharLimit = 16
+
 	m := gamelist{
-		list: list.New(items, list.NewDefaultDelegate(), 0, 0),
-		day:  nbaToday(),
+		list:  list.New(items, list.NewDefaultDelegate(), 0, 0),
+		day:   nbaToday(),
+		input: ti,
 	}
 
 	// Repurpose ←/→ and h/l for day navigation; keep paging on pgup/pgdown.
 	m.list.KeyMap.PrevPage.SetKeys("pgup", "b")
 	m.list.KeyMap.NextPage.SetKeys("pgdown", "f")
+	// Free up "g" for the date jump (leave "home" for go-to-start).
+	m.list.KeyMap.GoToStart.SetKeys("home")
 	dayKeys := []key.Binding{
 		key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("←/h", "prev day")),
 		key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", "next day")),
+		key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "go to date")),
 	}
 	m.list.AdditionalShortHelpKeys = func() []key.Binding { return dayKeys }
 	m.list.AdditionalFullHelpKeys = func() []key.Binding { return dayKeys }
