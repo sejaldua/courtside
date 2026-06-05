@@ -6,7 +6,7 @@ require (
 	charm.land/bubbles/v2 v2.1.0
 	charm.land/bubbletea/v2 v2.0.2
 	charm.land/lipgloss/v2 v2.0.3
-	github.com/NolanFogarty/nba-sdk v0.0.0-20260605205555-45a912b0a911
+	github.com/NolanFogarty/nba-sdk v0.0.0-20260605221507-4db33ba1b774
 )
 
 require (
