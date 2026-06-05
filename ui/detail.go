@@ -134,17 +134,26 @@ type detail struct {
 	game          gameDetail
 	loading       bool
 	err           error
-	expanded      bool // show detailed (expanded) stats
-	scroll        int  // play-by-play scroll offset (0 = newest at top)
+	scheduled     bool   // game hasn't tipped off yet; no stats to fetch
+	tipoff        string // start time, shown when scheduled
+	expanded      bool   // show detailed (expanded) stats
+	scroll        int    // play-by-play scroll offset (0 = newest at top)
 	width, height int
 }
 
 // newDetail seeds the header from the list selection (team names and scores are
-// known immediately) and marks the box score / play-by-play as still loading.
+// known immediately). A game that hasn't started has no box score / play-by-play
+// to fetch, so we show its tip-off time instead of loading.
 func newDetail(g backend.Game, width, height int) detail {
-	d := detail{gameID: g.GameId, loading: true, width: width, height: height}
+	d := detail{gameID: g.GameId, width: width, height: height}
 	d.game.away = teamBox{name: g.AwayTeam, score: g.AwayScore}
 	d.game.home = teamBox{name: g.HomeTeam, score: g.HomeScore}
+	if g.NotStarted() {
+		d.scheduled = true
+		d.tipoff = g.GameClock
+	} else {
+		d.loading = true
+	}
 	return d
 }
 
@@ -155,6 +164,9 @@ type gameDetailMsg struct {
 }
 
 func (m detail) Init() tea.Cmd {
+	if m.scheduled {
+		return nil // nothing to fetch until the game starts
+	}
 	id := m.gameID
 	return func() tea.Msg {
 		d, err := backend.GetGameDetail(id)
@@ -259,6 +271,13 @@ func (m detail) View() tea.View {
 
 	var body string
 	switch {
+	case m.scheduled:
+		note := "Not started"
+		if m.tipoff != "" {
+			note = "Tip-off · " + m.tipoff
+		}
+		body = lipgloss.JoinVertical(lipgloss.Left, m.renderHeader(width), "",
+			lipgloss.PlaceHorizontal(width, lipgloss.Center, mutedSty.Render(note)))
 	case m.err != nil:
 		body = lipgloss.JoinVertical(lipgloss.Left, m.renderHeader(width), "",
 			lipgloss.PlaceHorizontal(width, lipgloss.Center,
@@ -270,16 +289,21 @@ func (m detail) View() tea.View {
 	default:
 		body = lipgloss.JoinVertical(lipgloss.Left, m.renderHeader(width), "", m.renderMain(width))
 	}
-	statsDesc := "more stats"
-	if m.expanded {
-		statsDesc = "less stats"
+
+	// Only the loaded box score has scrollable / expandable content.
+	hint := renderHints([2]string{"q", "back"})
+	if !m.scheduled && !m.loading && m.err == nil {
+		statsDesc := "more stats"
+		if m.expanded {
+			statsDesc = "less stats"
+		}
+		hint = renderHints(
+			[2]string{"↑/k", "up"},
+			[2]string{"↓/j", "down"},
+			[2]string{"o", statsDesc},
+			[2]string{"q", "back"},
+		)
 	}
-	hint := renderHints(
-		[2]string{"↑/k", "up"},
-		[2]string{"↓/j", "down"},
-		[2]string{"o", statsDesc},
-		[2]string{"q", "back"},
-	)
 
 	// Push the hint to the bottom of the screen with a spacer that fills the
 	// leftover height between the body and the hint.

@@ -58,6 +58,7 @@ func scoreboardGame(g stats.ScoreboardV3Game) Game {
 		HomeScore: g.HomeTeam.Score,
 		AwayScore: g.AwayTeam.Score,
 		GameClock: clock,
+		status:    g.GameStatus,
 	}
 }
 

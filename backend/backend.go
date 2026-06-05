@@ -31,6 +31,14 @@ type Game struct {
 	GameClock string
 	HomeScore int
 	AwayScore int
+	status    int // 1 = scheduled, 2 = live, 3 = final
+}
+
+// NotStarted reports whether the game is scheduled but hasn't tipped off yet
+// (so there's no box score or play-by-play to fetch). GameClock holds the
+// tip-off time in this state.
+func (g Game) NotStarted() bool {
+	return g.status == statusUpcoming
 }
 
 // toGame converts an SDK scoreboard game into our internal Game, deriving the
@@ -54,6 +62,7 @@ func toGame(g live.Game) Game {
 		GameClock: clock,
 		HomeScore: g.HomeTeam.Score,
 		AwayScore: g.AwayTeam.Score,
+		status:    g.GameStatus,
 	}
 }
 
