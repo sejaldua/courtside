@@ -18,7 +18,12 @@ import (
 
 type playerStat struct {
 	name                              string
+	min                               string
 	pts, ast, reb, blk, to, plusMinus int
+
+	// expanded detail
+	fgm, fga, tpm, tpa, ftm, fta int
+	oreb, dreb, stl, pf          int
 }
 
 // recorded reports whether the player has any box-score contribution. Players
@@ -37,6 +42,10 @@ type teamBox struct {
 	fgPct, fg3Pct float64
 	ftm, fta      int
 	reb, ast, to  int
+
+	// expanded detail
+	fgm, fga, tpm, tpa       int
+	oreb, dreb, stl, blk, pf int
 }
 
 type playEvent struct {
@@ -107,7 +116,8 @@ type detail struct {
 	game          gameDetail
 	loading       bool
 	err           error
-	scroll        int // play-by-play scroll offset (0 = newest at top)
+	expanded      bool // show detailed (expanded) stats
+	scroll        int  // play-by-play scroll offset (0 = newest at top)
 	width, height int
 }
 
@@ -147,6 +157,11 @@ func (m detail) Update(msg tea.Msg) (detail, tea.Cmd) {
 		}
 	case tea.KeyPressMsg:
 		switch msg.String() {
+		case "o":
+			m.expanded = !m.expanded
+			if m.scroll > m.maxScroll() {
+				m.scroll = m.maxScroll()
+			}
 		case "up", "k":
 			if m.scroll > 0 {
 				m.scroll--
@@ -175,12 +190,16 @@ func toTeamBox(t backend.TeamDetail) teamBox {
 		name: t.Name, tricode: t.Tricode, score: t.Score,
 		fgPct: t.FGPct, fg3Pct: t.FG3Pct, ftm: t.FTM, fta: t.FTA,
 		reb: t.Reb, ast: t.Ast, to: t.To,
+		fgm: t.FGM, fga: t.FGA, tpm: t.TPM, tpa: t.TPA,
+		oreb: t.OReb, dreb: t.DReb, stl: t.Stl, blk: t.Blk, pf: t.PF,
 	}
 	tb.players = make([]playerStat, len(t.Players))
 	for i, p := range t.Players {
 		tb.players[i] = playerStat{
-			name: p.Name, pts: p.Pts, ast: p.Ast, reb: p.Reb,
+			name: p.Name, min: p.Min, pts: p.Pts, ast: p.Ast, reb: p.Reb,
 			blk: p.Blk, to: p.To, plusMinus: p.PlusMinus,
+			fgm: p.FGM, fga: p.FGA, tpm: p.TPM, tpa: p.TPA, ftm: p.FTM, fta: p.FTA,
+			oreb: p.OReb, dreb: p.DReb, stl: p.Stl, pf: p.PF,
 		}
 	}
 	return tb
@@ -233,7 +252,11 @@ func (m detail) View() tea.View {
 	default:
 		body = lipgloss.JoinVertical(lipgloss.Left, m.renderHeader(width), "", m.renderMain(width))
 	}
-	hint := hintSty.Render("↑/k up • ↓/j down • q back")
+	statsHint := "o more stats"
+	if m.expanded {
+		statsHint = "o less stats"
+	}
+	hint := hintSty.Render("↑/k up • ↓/j down • q back" + statsHint)
 
 	// Push the hint to the bottom of the screen with a spacer that fills the
 	// leftover height between the body and the hint.
@@ -268,14 +291,22 @@ func (m detail) renderMain(width int) string {
 	colW := (width - gap) / 2
 
 	left := m.renderPlayerColumn()
-	right := m.renderInfoColumn(colW, lipgloss.Height(left))
+	leftW := lipgloss.Width(left)
 
-	// Right-align the (fixed-width) left column so it sits against the center
-	// divide; the play-by-play box fills the right half. Contents stay left-
-	// aligned.
-	leftCol := lipgloss.PlaceHorizontal(colW, lipgloss.Right, left)
+	// Compact tables fit within half the screen, so keep the centered 50/50
+	// feel by right-aligning the left column in its half. The wider expanded
+	// tables claim the room they need and the feed takes whatever is left.
+	if leftW <= colW {
+		left = lipgloss.PlaceHorizontal(colW, lipgloss.Right, left)
+		leftW = colW
+	}
+	rightW := width - leftW - gap
+	if rightW < 24 {
+		rightW = 24
+	}
+	right := m.renderInfoColumn(rightW, lipgloss.Height(left))
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, leftCol, "  ", right)
+	return lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", right)
 }
 
 // renderPlayerColumn stacks the away player table, the horizontal team-stats
@@ -322,19 +353,65 @@ func (m detail) pbpWidth(max int) int {
 	return w
 }
 
+// statCol is one numeric column of the player table: a header, a fixed width,
+// and how to render a player's value.
+type statCol struct {
+	header string
+	width  int
+	value  func(p playerStat) string
+}
+
+func num(n int) string        { return fmt.Sprintf("%d", n) }
+func ma(made, att int) string { return fmt.Sprintf("%d-%d", made, att) }
+
+// playerCols returns the player-table columns for the current mode.
+func (m detail) playerCols() []statCol {
+	if m.expanded {
+		return []statCol{
+			{"MIN", 4, func(p playerStat) string { return p.min }},
+			{"PTS", 4, func(p playerStat) string { return num(p.pts) }},
+			{"FG", 6, func(p playerStat) string { return ma(p.fgm, p.fga) }},
+			{"3P", 5, func(p playerStat) string { return ma(p.tpm, p.tpa) }},
+			{"FT", 5, func(p playerStat) string { return ma(p.ftm, p.fta) }},
+			{"REB", 4, func(p playerStat) string { return num(p.reb) }},
+			{"AST", 4, func(p playerStat) string { return num(p.ast) }},
+			{"STL", 4, func(p playerStat) string { return num(p.stl) }},
+			{"BLK", 4, func(p playerStat) string { return num(p.blk) }},
+			{"TO", 4, func(p playerStat) string { return num(p.to) }},
+			{"PF", 4, func(p playerStat) string { return num(p.pf) }},
+			{"+/-", 5, func(p playerStat) string { return signed(p.plusMinus) }},
+		}
+	}
+	return []statCol{
+		{"PTS", wNum, func(p playerStat) string { return num(p.pts) }},
+		{"AST", wNum, func(p playerStat) string { return num(p.ast) }},
+		{"REB", wNum, func(p playerStat) string { return num(p.reb) }},
+		{"BLK", wNum, func(p playerStat) string { return num(p.blk) }},
+		{"TO", wNum, func(p playerStat) string { return num(p.to) }},
+		{"+/-", wPM, func(p playerStat) string { return signed(p.plusMinus) }},
+	}
+}
+
+// tableWidth is the content width of a player table with the given columns:
+// the name column plus each column preceded by a single-space separator.
+func tableWidth(cols []statCol) int {
+	w := wName
+	for _, c := range cols {
+		w += 1 + c.width
+	}
+	return w
+}
+
 func (m detail) renderTeamTable(t teamBox, teamColor color.Color) string {
+	cols := m.playerCols()
+
 	title := lipgloss.NewStyle().Bold(true).Foreground(teamColor).
 		Render(fmt.Sprintf("%s (%d)", t.name, t.score))
 
-	header := colHeaderSty.Render(
-		pad("PLAYER", wName, false) + " " +
-			pad("PTS", wNum, true) + " " +
-			pad("AST", wNum, true) + " " +
-			pad("REB", wNum, true) + " " +
-			pad("BLK", wNum, true) + " " +
-			pad("TO", wNum, true) + " " +
-			pad("+/-", wPM, true),
-	)
+	hdr := pad("PLAYER", wName, false)
+	for _, c := range cols {
+		hdr += " " + pad(c.header, c.width, true)
+	}
 
 	players := append([]playerStat(nil), t.players...)
 	sort.SliceStable(players, func(i, j int) bool {
@@ -342,15 +419,12 @@ func (m detail) renderTeamTable(t teamBox, teamColor color.Color) string {
 	})
 
 	rows := make([]string, 0, len(players)+2)
-	rows = append(rows, title, header)
+	rows = append(rows, title, colHeaderSty.Render(hdr))
 	for _, p := range players {
-		row := pad(truncate(p.name, wName), wName, false) + " " +
-			pad(fmt.Sprintf("%d", p.pts), wNum, true) + " " +
-			pad(fmt.Sprintf("%d", p.ast), wNum, true) + " " +
-			pad(fmt.Sprintf("%d", p.reb), wNum, true) + " " +
-			pad(fmt.Sprintf("%d", p.blk), wNum, true) + " " +
-			pad(fmt.Sprintf("%d", p.to), wNum, true) + " " +
-			pad(signed(p.plusMinus), wPM, true)
+		row := pad(truncate(p.name, wName), wName, false)
+		for _, c := range cols {
+			row += " " + pad(c.value(p), c.width, true)
+		}
 		if !p.recorded() {
 			row = dimRowSty.Render(row)
 		}
@@ -360,22 +434,30 @@ func (m detail) renderTeamTable(t teamBox, teamColor color.Color) string {
 	return panelSty.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
 }
 
-// playerTableW is the width of a player-table row, matched by the team-stats
-// bar so it spans the player tables exactly.
-const playerTableW = wName + 5*wNum + wPM + 6 // 6 single-space separators
-
-// team-stats bar layout: TEAM column + 3 shooting columns + 3
-// team columns, summing to playerTableW.
-const (
-	barStatW    = 6
-	barTeamW    = playerTableW - 6*barStatW
-)
+// width of each team-stats bar stat column.
+const barStatW = 6
 
 // barStatRows builds the six columns shown in the horizontal team-stats bar
 // from the game's aggregate stats, in display order: shooting (FG%, 3P%, FTM)
 // then team (REB, AST, TO).
 func (m detail) barStatRows() []statRow {
 	a, h := m.game.away, m.game.home
+	if m.expanded {
+		return []statRow{
+			maRow("FG", a.fgm, a.fga, h.fgm, h.fga),
+			pctRow("FG%", a.fgPct, h.fgPct),
+			maRow("3P", a.tpm, a.tpa, h.tpm, h.tpa),
+			pctRow("3P%", a.fg3Pct, h.fg3Pct),
+			ftmRow("FT", a.ftm, a.fta, h.ftm, h.fta),
+			intRow("OREB", a.oreb, h.oreb, false),
+			intRow("REB", a.reb, h.reb, false),
+			intRow("AST", a.ast, h.ast, false),
+			intRow("STL", a.stl, h.stl, false),
+			intRow("BLK", a.blk, h.blk, false),
+			intRow("TO", a.to, h.to, true), // fewer turnovers leads
+			intRow("PF", a.pf, h.pf, true), // fewer fouls leads
+		}
+	}
 	return []statRow{
 		pctRow("FG%", a.fgPct, h.fgPct),
 		pctRow("3P%", a.fg3Pct, h.fg3Pct),
@@ -384,6 +466,13 @@ func (m detail) barStatRows() []statRow {
 		intRow("AST", a.ast, h.ast, false),
 		intRow("TO", a.to, h.to, true), // fewer turnovers leads
 	}
+}
+
+// maRow is a "made-attempted" comparison column; the team with more makes leads.
+func maRow(label string, am, aa, hm, ha int) statRow {
+	return statRow{label: label,
+		away: fmt.Sprintf("%d-%d", am, aa), home: fmt.Sprintf("%d-%d", hm, ha),
+		awayKey: float64(am), homeKey: float64(hm)}
 }
 
 func pctRow(label string, a, h float64) statRow {
@@ -404,32 +493,35 @@ func intRow(label string, a, h int, lowerBetter bool) statRow {
 		awayKey: float64(a), homeKey: float64(h), lowerBetter: lowerBetter}
 }
 
-// renderTeamBar renders the horizontal team-stats bar that sits between the two
-// player tables: a header row of column labels followed by one row per team.
+// renderTeamBar renders the horizontal team-stats bar between the two player
+// tables: a header row of column labels followed by one row per team. The TEAM
+// column is sized so the bar spans the player tables exactly.
 func (m detail) renderTeamBar() string {
 	rows := m.barStatRows()
 
-	hdr := pad("TEAM", barTeamW, false)
-	for i, r := range rows {
-		if i == 3 { // gap separating the shooting and team groups
-//			hdr += strings.Repeat(" ", barGroupGap)
-		}
+	teamW := tableWidth(m.playerCols()) - len(rows)*barStatW
+	if teamW < 4 {
+		teamW = 4
+	}
+
+	hdr := pad("TEAM", teamW, false)
+	for _, r := range rows {
 		hdr += pad(r.label, barStatW, true)
 	}
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		colHeaderSty.Render(hdr),
-		m.barTeamRow(rows, m.game.away.tricode, awayColor, true),
-		m.barTeamRow(rows, m.game.home.tricode, homeColor, false),
+		m.barTeamRow(rows, m.game.away.tricode, awayColor, true, teamW),
+		m.barTeamRow(rows, m.game.home.tricode, homeColor, false, teamW),
 	)
 	return panelSty.Render(content)
 }
 
 // barTeamRow renders one team's row of the bar, highlighting the cells where
 // this team leads.
-func (m detail) barTeamRow(rows []statRow, tricode string, teamColor color.Color, isAway bool) string {
+func (m detail) barTeamRow(rows []statRow, tricode string, teamColor color.Color, isAway bool, teamW int) string {
 	row := lipgloss.NewStyle().Bold(true).Foreground(teamColor).
-		Render(pad(tricode, barTeamW, false))
+		Render(pad(tricode, teamW, false))
 	for _, r := range rows {
 		val, leads := r.home, false
 		awayLeads, homeLeads := r.leader()
