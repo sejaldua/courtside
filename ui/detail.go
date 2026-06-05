@@ -256,7 +256,7 @@ func (m detail) View() tea.View {
 	if m.expanded {
 		statsHint = "o less stats"
 	}
-	hint := hintSty.Render("q back · ↑/↓ or j/k scroll · " + statsHint)
+	hint := hintSty.Render("↑/k up • ↓/j down • q back" + statsHint)
 
 	// Push the hint to the bottom of the screen with a spacer that fills the
 	// leftover height between the body and the hint.
