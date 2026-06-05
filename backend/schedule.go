@@ -14,6 +14,13 @@ import (
 // endpoint, joining the GameHeader table (which game is home/away) with the
 // LineScore table (team names and points).
 func GetGamesForDate(date string) ([]Game, error) {
+	// Today comes from the live CDN scoreboard (same as startup) so the
+	// navigated view matches the initial one and avoids scoreboardv2's stale
+	// scheduled entries.
+	if isTodayET(date) {
+		return GetTodaysGames()
+	}
+
 	client := nba.NewClient()
 	resp, err := client.Stats.ScoreboardV2(context.Background(), date)
 	if err != nil {
@@ -90,6 +97,20 @@ func reconcileFromBoxScore(client *nba.Client, game *Game) {
 	game.GameClock = "Final"
 	game.HomeTeam = coalesce(bt.HomeTeam.TeamName, game.HomeTeam)
 	game.AwayTeam = coalesce(bt.AwayTeam.TeamName, game.AwayTeam)
+}
+
+// isTodayET reports whether the given "YYYY-MM-DD" date is today (ET).
+func isTodayET(date string) bool {
+	d, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return false
+	}
+	now := time.Now()
+	if loc, err := time.LoadLocation("America/New_York"); err == nil {
+		now = now.In(loc)
+	}
+	y, m, day := now.Date()
+	return d.Year() == y && d.Month() == m && d.Day() == day
 }
 
 // isPastDate reports whether the given "YYYY-MM-DD" date is before today (ET).

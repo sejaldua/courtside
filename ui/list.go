@@ -118,7 +118,12 @@ func (m gamelist) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // gotoDay moves the viewed date by delta days immediately, but defers the fetch
 // behind a debounce so spamming the key doesn't hammer the API.
 func (m gamelist) gotoDay(delta int) (gamelist, tea.Cmd) {
-	m.day = m.day.AddDate(0, 0, delta)
+	next := m.day.AddDate(0, 0, delta)
+	// Don't navigate past today (ET) — there are no future results to show.
+	if delta > 0 && afterToday(next) {
+		return m, nil
+	}
+	m.day = next
 	m.loading = true
 	m.err = nil
 	m.seq++
@@ -224,6 +229,17 @@ func (m gamelist) title() string {
 
 func sameDay(a, b time.Time) bool {
 	return a.Year() == b.Year() && a.YearDay() == b.YearDay()
+}
+
+// afterToday reports whether t's calendar date is after today (ET). Both sides
+// are normalized to their calendar date so the comparison ignores time of day
+// and location differences.
+func afterToday(t time.Time) bool {
+	today := nbaToday()
+	ty, tm, td := t.Date()
+	ny, nm, nd := today.Date()
+	return time.Date(ty, tm, td, 0, 0, 0, 0, time.UTC).
+		After(time.Date(ny, nm, nd, 0, 0, 0, 0, time.UTC))
 }
 
 // nbaToday returns the current date in US Eastern time, which is what the NBA's
