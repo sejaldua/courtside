@@ -1,6 +1,6 @@
 # Courtside
 
-A terminal UI for viewing live NBA games and scores.
+A terminal UI for viewing NBA games and scores.
 
 ## Installation
 
