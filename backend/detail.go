@@ -2,6 +2,9 @@ package backend
 
 import (
 	"context"
+	"fmt"
+	"strconv"
+	"strings"
 
 	nba "github.com/NolanFogarty/nba-sdk"
 	"github.com/NolanFogarty/nba-sdk/stats"
@@ -9,9 +12,15 @@ import (
 
 // PlayerLine is one player's box-score line.
 type PlayerLine struct {
-	Name                   string
+	Name string
+	Min  string // minutes played
+
 	Pts, Ast, Reb, Blk, To int
 	PlusMinus              int
+
+	// expanded detail
+	FGM, FGA, TPM, TPA, FTM, FTA int
+	OReb, DReb, Stl, PF          int
 }
 
 // TeamDetail is one team's full box score plus the aggregate stats shown in the
@@ -22,8 +31,12 @@ type TeamDetail struct {
 	Players       []PlayerLine
 
 	FGPct, FG3Pct float64 // shooting percentages, 0-100
-	FTM, FTA      int      // free throws made / attempted
+	FTM, FTA      int     // free throws made / attempted
 	Reb, Ast, To  int
+
+	// expanded detail
+	FGM, FGA, TPM, TPA       int
+	OReb, DReb, Stl, Blk, PF int
 }
 
 // PlayLine is a single play-by-play event. Team is the tricode, empty for
@@ -89,6 +102,15 @@ func toTeamDetail(t stats.BoxTeam) TeamDetail {
 		Reb:     s.ReboundsTotal,
 		Ast:     s.Assists,
 		To:      s.Turnovers,
+		FGM:     s.FieldGoalsMade,
+		FGA:     s.FieldGoalsAttempted,
+		TPM:     s.ThreePointersMade,
+		TPA:     s.ThreePointersAttempted,
+		OReb:    s.ReboundsOffensive,
+		DReb:    s.ReboundsDefensive,
+		Stl:     s.Steals,
+		Blk:     s.Blocks,
+		PF:      s.FoulsPersonal,
 	}
 
 	for _, p := range t.Players {
@@ -99,15 +121,42 @@ func toTeamDetail(t stats.BoxTeam) TeamDetail {
 		ps := p.Statistics
 		td.Players = append(td.Players, PlayerLine{
 			Name:      name,
+			Min:       fmtMinutes(ps.Minutes),
 			Pts:       ps.Points,
 			Ast:       ps.Assists,
 			Reb:       ps.ReboundsTotal,
 			Blk:       ps.Blocks,
 			To:        ps.Turnovers,
 			PlusMinus: int(ps.PlusMinusPoints),
+			FGM:       ps.FieldGoalsMade,
+			FGA:       ps.FieldGoalsAttempted,
+			TPM:       ps.ThreePointersMade,
+			TPA:       ps.ThreePointersAttempted,
+			FTM:       ps.FreeThrowsMade,
+			FTA:       ps.FreeThrowsAttempted,
+			OReb:      ps.ReboundsOffensive,
+			DReb:      ps.ReboundsDefensive,
+			Stl:       ps.Steals,
+			PF:        ps.FoulsPersonal,
 		})
 	}
 	return td
+}
+
+// fmtMinutes extracts whole minutes from the box score's minutes field, which
+// may be ISO ("PT34M12.00S") or "MM:SS".
+func fmtMinutes(raw string) string {
+	if raw == "" {
+		return "0"
+	}
+	var m int
+	if _, err := fmt.Sscanf(raw, "PT%dM", &m); err == nil {
+		return strconv.Itoa(m)
+	}
+	if i := strings.IndexByte(raw, ':'); i >= 0 {
+		return raw[:i]
+	}
+	return raw
 }
 
 // pct returns made/attempted as a 0-100 percentage, or 0 when none attempted.
