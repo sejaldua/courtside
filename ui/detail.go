@@ -233,7 +233,7 @@ func (m detail) View() tea.View {
 	default:
 		body = lipgloss.JoinVertical(lipgloss.Left, m.renderHeader(width), "", m.renderMain(width))
 	}
-	hint := hintSty.Render("q back · ↑/↓ or j/k scroll")
+	hint := hintSty.Render("↑/k up • ↓/j down • q back")
 
 	// Push the hint to the bottom of the screen with a spacer that fills the
 	// leftover height between the body and the hint.
