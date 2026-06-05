@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"time"
+
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"github.com/NolanFogarty/courtside/backend"
@@ -10,6 +12,17 @@ const (
 	listview int = iota
 	detailview
 )
+
+// refreshInterval is how often live data (the list while viewing today, and an
+// in-progress game's detail) is re-fetched.
+const refreshInterval = 15 * time.Second
+
+// refreshTickMsg is the periodic heartbeat that drives auto-refresh.
+type refreshTickMsg struct{}
+
+func refreshTick() tea.Cmd {
+	return tea.Tick(refreshInterval, func(time.Time) tea.Msg { return refreshTickMsg{} })
+}
 
 type root struct {
 	current       int
@@ -26,7 +39,7 @@ func newRoot(games []backend.Game) root {
 }
 
 func (r root) Init() tea.Cmd {
-	return r.list.Init()
+	return tea.Batch(r.list.Init(), refreshTick())
 }
 
 func (r root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -42,6 +55,22 @@ func (r root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.list = updated.(gamelist)
 		r.detail, _ = r.detail.Update(ws)
 		return r, cmd
+	}
+
+	// Auto-refresh heartbeat: re-fetch whichever view is active and wants fresh
+	// data, then reschedule. A single tick lineage avoids overlapping polls.
+	if _, ok := msg.(refreshTickMsg); ok {
+		var cmd tea.Cmd
+		switch r.current {
+		case listview:
+			cmd = r.list.refreshCmd()
+		case detailview:
+			cmd = r.detail.refreshCmd()
+		}
+		if cmd != nil {
+			return r, tea.Batch(cmd, refreshTick())
+		}
+		return r, refreshTick()
 	}
 
 	// Day navigation messages always belong to the list, even if the user has

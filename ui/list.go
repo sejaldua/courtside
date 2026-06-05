@@ -100,10 +100,17 @@ func (m gamelist) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !sameDay(msg.day, m.day) {
 			return m, nil // a newer day was requested; ignore stale result
 		}
+		wasLoading := m.loading
 		m.loading = false
-		m.err = msg.err
 		var cmd tea.Cmd
-		if msg.err == nil {
+		if msg.err != nil {
+			// Only surface an error on a user-initiated load; ignore transient
+			// auto-refresh failures and keep showing the current games.
+			if wasLoading {
+				m.err = msg.err
+			}
+		} else {
+			m.err = nil
 			cmd = m.applyGames(msg.games)
 		}
 		m.list.Title = m.title()
@@ -201,6 +208,15 @@ func fetchGames(day time.Time) tea.Cmd {
 		games, err := backend.GetGamesForDate(day.Format("2006-01-02"))
 		return gamesLoadedMsg{day: day, games: games, err: err}
 	}
+}
+
+// refreshCmd silently re-fetches the current day's games when viewing today,
+// where live scores change. Past/future days are static, so it returns nil.
+func (m gamelist) refreshCmd() tea.Cmd {
+	if m.entering || !sameDay(m.day, nbaToday()) {
+		return nil
+	}
+	return fetchGames(m.day)
 }
 
 // applyGames replaces the list's items with the games for the current day.

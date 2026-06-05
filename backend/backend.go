@@ -41,6 +41,12 @@ func (g Game) NotStarted() bool {
 	return g.status == statusUpcoming
 }
 
+// IsLive reports whether the game is currently in progress, in which case its
+// data is worth auto-refreshing.
+func (g Game) IsLive() bool {
+	return g.status == statusLive
+}
+
 // toGame converts an SDK scoreboard game into our internal Game, deriving the
 // display clock from the game's status.
 func toGame(g live.Game) Game {

@@ -136,6 +136,7 @@ type detail struct {
 	err           error
 	scheduled     bool   // game hasn't tipped off yet; no stats to fetch
 	tipoff        string // start time, shown when scheduled
+	live          bool   // game in progress; auto-refresh its data
 	expanded      bool   // show detailed (expanded) stats
 	scroll        int    // play-by-play scroll offset (0 = newest at top)
 	width, height int
@@ -145,7 +146,7 @@ type detail struct {
 // known immediately). A game that hasn't started has no box score / play-by-play
 // to fetch, so we show its tip-off time instead of loading.
 func newDetail(g backend.Game, width, height int) detail {
-	d := detail{gameID: g.GameId, width: width, height: height}
+	d := detail{gameID: g.GameId, live: g.IsLive(), width: width, height: height}
 	d.game.away = teamBox{name: g.AwayTeam, score: g.AwayScore}
 	d.game.home = teamBox{name: g.HomeTeam, score: g.HomeScore}
 	if g.NotStarted() {
@@ -155,6 +156,19 @@ func newDetail(g backend.Game, width, height int) detail {
 		d.loading = true
 	}
 	return d
+}
+
+// refreshCmd re-fetches the box score and play-by-play, but only while the game
+// is live. Existing scroll position and expanded state are preserved by Update.
+func (m detail) refreshCmd() tea.Cmd {
+	if !m.live {
+		return nil
+	}
+	id := m.gameID
+	return func() tea.Msg {
+		d, err := backend.GetGameDetail(id)
+		return gameDetailMsg{detail: d, err: err}
+	}
 }
 
 // gameDetailMsg carries the result of the async GetGameDetail fetch.
@@ -179,11 +193,17 @@ func (m detail) Update(msg tea.Msg) (detail, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 	case gameDetailMsg:
+		wasLoading := m.loading
 		m.loading = false
 		if msg.err != nil {
-			m.err = msg.err
+			// Only surface an error on the initial load; ignore transient
+			// auto-refresh failures and keep showing the last good data.
+			if wasLoading {
+				m.err = msg.err
+			}
 		} else {
 			m.game = toGameDetail(msg.detail)
+			m.err = nil
 		}
 	case tea.KeyPressMsg:
 		switch msg.String() {
