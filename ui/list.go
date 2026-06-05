@@ -295,6 +295,7 @@ func (m gamelist) View() tea.View {
 			[2]string{"←/h", "prev day"},
 			[2]string{"→/l", "next day"},
 			[2]string{"d", "date"},
+			[2]string{"s", "standings"},
 			[2]string{"q", "quit"},
 		)
 
@@ -346,6 +347,7 @@ func newGamesList(games []backend.Game) gamelist {
 		key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("←/h", "prev day")),
 		key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", "next day")),
 		key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "date")),
+		key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "standings")),
 	}
 	m.list.AdditionalShortHelpKeys = func() []key.Binding { return dayKeys }
 	m.list.AdditionalFullHelpKeys = func() []key.Binding { return dayKeys }

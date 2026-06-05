@@ -11,6 +11,7 @@ import (
 const (
 	listview int = iota
 	detailview
+	standingsview
 )
 
 // refreshInterval is how often live data (the list while viewing today, and an
@@ -28,6 +29,7 @@ type root struct {
 	current       int
 	list          gamelist
 	detail        detail
+	standings     standings
 	width, height int
 }
 
@@ -48,12 +50,13 @@ func (r root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return r, tea.Quit
 	}
 
-	// Keep both sub-views sized regardless of which is active.
+	// Keep all sub-views sized regardless of which is active.
 	if ws, ok := msg.(tea.WindowSizeMsg); ok {
 		r.width, r.height = ws.Width, ws.Height
 		updated, cmd := r.list.Update(ws)
 		r.list = updated.(gamelist)
 		r.detail, _ = r.detail.Update(ws)
+		r.standings, _ = r.standings.Update(ws)
 		return r, cmd
 	}
 
@@ -84,14 +87,21 @@ func (r root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch r.current {
 	case listview:
-		// Enter on a selected item navigates to the detail screen, unless the
-		// list is filtering or the user is typing a date to jump to.
-		if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "enter" &&
+		// Enter opens the selected game; "s" opens standings. Both are ignored
+		// while the list is filtering or the user is typing a date to jump to.
+		if key, ok := msg.(tea.KeyPressMsg); ok &&
 			r.list.list.FilterState() != list.Filtering && !r.list.entering {
-			if sel, ok := r.list.list.SelectedItem().(item); ok {
-				r.detail = newDetail(sel.game, r.width, r.height)
-				r.current = detailview
-				return r, r.detail.Init() // kick off the async fetch
+			switch key.String() {
+			case "enter":
+				if sel, ok := r.list.list.SelectedItem().(item); ok {
+					r.detail = newDetail(sel.game, r.width, r.height)
+					r.current = detailview
+					return r, r.detail.Init() // kick off the async fetch
+				}
+			case "s":
+				r.standings = newStandings(r.width, r.height)
+				r.current = standingsview
+				return r, r.standings.Init()
 			}
 		}
 
@@ -111,6 +121,19 @@ func (r root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		r.detail, cmd = r.detail.Update(msg)
 		return r, cmd
+
+	case standingsview:
+		if key, ok := msg.(tea.KeyPressMsg); ok {
+			switch key.String() {
+			case "esc", "q":
+				r.current = listview
+				return r, nil
+			}
+		}
+
+		var cmd tea.Cmd
+		r.standings, cmd = r.standings.Update(msg)
+		return r, cmd
 	}
 
 	return r, nil
@@ -120,6 +143,8 @@ func (r root) View() tea.View {
 	switch r.current {
 	case detailview:
 		return r.detail.View()
+	case standingsview:
+		return r.standings.View()
 	default:
 		return r.list.View()
 	}
