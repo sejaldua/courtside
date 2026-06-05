@@ -55,10 +55,10 @@ func (r root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch r.current {
 	case listview:
-		// Enter on a selected item navigates to the detail screen,
-		// unless the list is currently being filtered.
+		// Enter on a selected item navigates to the detail screen, unless the
+		// list is filtering or the user is typing a date to jump to.
 		if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "enter" &&
-			r.list.list.FilterState() != list.Filtering {
+			r.list.list.FilterState() != list.Filtering && !r.list.entering {
 			if sel, ok := r.list.list.SelectedItem().(item); ok {
 				r.detail = newDetail(sel.game, r.width, r.height)
 				r.current = detailview

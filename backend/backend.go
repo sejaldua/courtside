@@ -89,3 +89,20 @@ func GetLiveGames() []Game {
 		return status == statusLive
 	})
 }
+
+// GetTodaysGames returns every game on today's live CDN scoreboard (upcoming,
+// in-progress, and final) — the same source used at startup. GetGamesForDate
+// routes today's date here so the navigated "today" view matches the initial
+// one instead of using the staler scoreboardv2 schedule.
+func GetTodaysGames() ([]Game, error) {
+	client := nba.NewClient()
+	resp, err := client.Live.Scoreboard(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	games := make([]Game, 0, len(resp.Scoreboard.Games))
+	for _, g := range resp.Scoreboard.Games {
+		games = append(games, toGame(g))
+	}
+	return games, nil
+}
