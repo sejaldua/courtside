@@ -83,7 +83,7 @@ func (m gamelist) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Day navigation (unless typing a filter).
 		if m.list.FilterState() != list.Filtering {
 			switch msg.String() {
-			case "g":
+			case "d":
 				return m.startDateInput()
 			case "left", "h":
 				return m.gotoDay(-1)
@@ -275,7 +275,12 @@ func (m gamelist) View() tea.View {
 			"",
 			lipgloss.NewStyle().Faint(true).Render(note),
 		)
-		hint := lipgloss.NewStyle().Faint(true).Render("←/h prev day · →/l next day · g go to date · q quit")
+		hint := renderHints(
+			[2]string{"←/h", "prev day"},
+			[2]string{"→/l", "next day"},
+			[2]string{"d", "date"},
+			[2]string{"q", "quit"},
+		)
 
 		// Push the hint to the bottom of the screen.
 		_, vFrame := docStyle.GetFrameSize()
@@ -317,15 +322,14 @@ func newGamesList(games []backend.Game) gamelist {
 		input: ti,
 	}
 
-	// Repurpose ←/→ and h/l for day navigation; keep paging on pgup/pgdown.
+	// Repurpose ←/→ and h/l for day navigation; keep paging on pgup/pgdown and
+	// free up "d" (a default next-page key) for the date jump.
 	m.list.KeyMap.PrevPage.SetKeys("pgup", "b")
 	m.list.KeyMap.NextPage.SetKeys("pgdown", "f")
-	// Free up "g" for the date jump (leave "home" for go-to-start).
-	m.list.KeyMap.GoToStart.SetKeys("home")
 	dayKeys := []key.Binding{
 		key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("←/h", "prev day")),
 		key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", "next day")),
-		key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "go to date")),
+		key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "date")),
 	}
 	m.list.AdditionalShortHelpKeys = func() []key.Binding { return dayKeys }
 	m.list.AdditionalFullHelpKeys = func() []key.Binding { return dayKeys }

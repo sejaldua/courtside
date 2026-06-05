@@ -100,7 +100,25 @@ var (
 	accentSty    = lipgloss.NewStyle().Bold(true).Foreground(accentColor)
 	hintSty      = lipgloss.NewStyle().Foreground(mutedColor)
 	errSty       = lipgloss.NewStyle().Bold(true).Foreground(homeColor)
+
+	// help-bar styling matched to the bubbles list help: muted key/desc/separator
+	// colors and the list's left padding, so all key hints look the same.
+	helpKeySty  = lipgloss.NewStyle().Foreground(lipgloss.Color("#626262"))
+	helpDescSty = lipgloss.NewStyle().Foreground(lipgloss.Color("#4A4A4A"))
+	helpSepSty  = lipgloss.NewStyle().Foreground(lipgloss.Color("#3C3C3C"))
+	helpSty     = lipgloss.NewStyle().PaddingLeft(2)
 )
+
+// renderHints renders key/description pairs in the same muted colors, separator,
+// and left padding as the bubbles list's help bar.
+func renderHints(pairs ...[2]string) string {
+	sep := helpSepSty.Render(" • ")
+	parts := make([]string, len(pairs))
+	for i, p := range pairs {
+		parts[i] = helpKeySty.Render(p[0]) + " " + helpDescSty.Render(p[1])
+	}
+	return helpSty.Render(strings.Join(parts, sep))
+}
 
 // stat-table column widths
 const (
@@ -252,11 +270,16 @@ func (m detail) View() tea.View {
 	default:
 		body = lipgloss.JoinVertical(lipgloss.Left, m.renderHeader(width), "", m.renderMain(width))
 	}
-	statsHint := "o more stats"
+	statsDesc := "more stats"
 	if m.expanded {
-		statsHint = "o less stats"
+		statsDesc = "less stats"
 	}
-	hint := hintSty.Render("↑/k up • ↓/j down • q back" + statsHint)
+	hint := renderHints(
+		[2]string{"↑/k", "up"},
+		[2]string{"↓/j", "down"},
+		[2]string{"o", statsDesc},
+		[2]string{"q", "back"},
+	)
 
 	// Push the hint to the bottom of the screen with a spacer that fills the
 	// leftover height between the body and the hint.
