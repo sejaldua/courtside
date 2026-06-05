@@ -259,7 +259,7 @@ func (m gamelist) View() tea.View {
 			"",
 			lipgloss.NewStyle().Faint(true).Render(note),
 		)
-		hint := lipgloss.NewStyle().Faint(true).Render("←/h prev day · →/l next day · g go to date")
+		hint := lipgloss.NewStyle().Faint(true).Render("←/h prev day · →/l next day · g go to date · q quit")
 
 		// Push the hint to the bottom of the screen.
 		_, vFrame := docStyle.GetFrameSize()
