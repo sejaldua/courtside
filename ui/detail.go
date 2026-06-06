@@ -414,6 +414,12 @@ func (m detail) pbpWidth(max int) int {
 		}
 	}
 	w := wWhen + 2 + wTag + 2 + maxDesc
+	if len(m.game.plays) == 0 {
+		// Keep room for the "unavailable" note so the divider stays aligned.
+		if nw := lipgloss.Width(pbpUnavailable); w < nw {
+			w = nw
+		}
+	}
 	if w > max {
 		w = max
 	}
@@ -625,12 +631,19 @@ func (m detail) renderPBPColumn(w int) string {
 	}
 	lines := []string{title, dimRowSty.Render(strings.Repeat("─", w))}
 
+	if len(plays) == 0 {
+		lines = append(lines, mutedSty.Render(pbpUnavailable))
+	}
 	for _, p := range plays[start:end] {
 		lines = append(lines, renderPlay(p, m.game.home.tricode, w))
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
+
+// pbpUnavailable is shown in the feed when no play-by-play could be loaded (the
+// endpoint failed, or the game just tipped off).
+const pbpUnavailable = "Play-by-play unavailable"
 
 // play-by-play line layout: "Q2 08:44" (8) + gap + "[NYK]" (5) + gap + desc
 const (
