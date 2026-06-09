@@ -284,12 +284,12 @@ func (m detail) pbpVisible() int {
 		// Estimate chart height: header(1) + blank(1) + away rows + axis(1) + home rows/label(1+)
 		maxAway, maxHome := 0, 0
 		for _, p := range m.game.plays {
-			m := p.scoreAway - p.scoreHome
-			if m > maxAway {
-				maxAway = m
+			margin := p.scoreAway - p.scoreHome
+			if margin > maxAway {
+				maxAway = margin
 			}
-			if -m > maxHome {
-				maxHome = -m
+			if -margin > maxHome {
+				maxHome = -margin
 			}
 		}
 		awayRows := (maxAway + 2) / 3
@@ -416,15 +416,16 @@ func (m detail) renderMain(width int) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", right)
 }
 
-// renderPlayerColumn stacks the away player table, the horizontal team-stats
-// bar, and the home player table vertically.
+// renderPlayerColumn stacks the team-stats bar at the top, then the away and
+// home player tables below. The team bar width matches the player tables.
 func (m detail) renderPlayerColumn() string {
 	awayC := teamColorOrDefault(m.game.away.tricode, awayColor)
 	homeC := teamColorOrDefault(m.game.home.tricode, homeColor)
 	away := m.renderTeamTable(m.game.away, awayC)
-	bar := m.renderTeamBar()
 	home := m.renderTeamTable(m.game.home, homeC)
-	return lipgloss.JoinVertical(lipgloss.Left, away, "", bar, "", home)
+	tableW := lipgloss.Width(away)
+	bar := m.renderTeamBar(tableW)
+	return lipgloss.JoinVertical(lipgloss.Left, bar, "", away, "", home)
 }
 
 func teamColorOrDefault(tricode string, fallback color.Color) color.Color {
@@ -730,12 +731,17 @@ func intRow(label string, a, h int, lowerBetter bool) statRow {
 		awayKey: float64(a), homeKey: float64(h), lowerBetter: lowerBetter}
 }
 
-// renderTeamBar renders the horizontal team-stats bar between the two player
-// tables: a header row of column labels followed by one row per team. The bar
-// content width always matches the player table content width.
-func (m detail) renderTeamBar() string {
+// renderTeamBar renders the horizontal team-stats bar: a header row of column
+// labels followed by one row per team. outerW is the total rendered width
+// (including panelSty border/padding) to match.
+func (m detail) renderTeamBar(outerW int) string {
 	rows := m.barStatRows()
-	targetW := tableWidth(m.playerCols())
+	// panelSty adds 2 chars of horizontal padding (Padding 0,1 on each side)
+	// plus 2 chars of border (left + right) = 4 total.
+	targetW := outerW - 4
+	if targetW < 20 {
+		targetW = tableWidth(m.playerCols())
+	}
 
 	// Size the TEAM column so that TEAM + stat columns = targetW.
 	teamW := targetW - len(rows)*barStatW
@@ -748,20 +754,30 @@ func (m detail) renderTeamBar() string {
 		hdr += pad(r.label, barStatW, true)
 	}
 
-	// If the stat columns overflow the target, pad the header/rows to match.
-	actualW := teamW + len(rows)*barStatW
-	if actualW < targetW {
-		hdr += strings.Repeat(" ", targetW-actualW)
-	}
-
 	awayC := teamColorOrDefault(m.game.away.tricode, awayColor)
 	homeC := teamColorOrDefault(m.game.home.tricode, homeColor)
+
+	awayRow := m.barTeamRow(rows, m.game.away.tricode, awayC, true, teamW)
+	homeRow := m.barTeamRow(rows, m.game.home.tricode, homeC, false, teamW)
+
+	// Pad each row to targetW so the panel border aligns with the player tables.
+	hdr = hdr + strings.Repeat(" ", max(0, targetW-lipgloss.Width(hdr)))
+	awayRow = awayRow + strings.Repeat(" ", max(0, targetW-lipgloss.Width(awayRow)))
+	homeRow = homeRow + strings.Repeat(" ", max(0, targetW-lipgloss.Width(homeRow)))
+
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		colHeaderSty.Render(hdr),
-		m.barTeamRow(rows, m.game.away.tricode, awayC, true, teamW),
-		m.barTeamRow(rows, m.game.home.tricode, homeC, false, teamW),
+		awayRow,
+		homeRow,
 	)
-	return panelSty.Width(targetW).Render(content)
+	return panelSty.Render(content)
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // barTeamRow renders one team's row of the bar, highlighting the cells where

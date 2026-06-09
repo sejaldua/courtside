@@ -1,27 +1,24 @@
 # Courtside
 
-A terminal UI for following NBA games, box scores, and standings. 
+Terminal UI for following NBA games. Live scores, box scores, play-by-play, standings — all from the command line.
 
-Browse the day's games, drill into a live or finished game for its full box
-score and play-by-play, jump to any date to see past results, and check the
-league standings. Games in progress refresh on their own while you watch.
+## What it does
 
-## Data 
+Open your terminal, run `courtside`, and you get today's scoreboard. Arrow into any game for the full box score and a scrollable play-by-play feed. Navigate between days to check past results. Live games auto-refresh every 15 seconds.
 
-Courtside pulls directly from the NBA's public JSON endpoints via
-[`nba-sdk`](https://github.com/NolanFogarty/nba-sdk):
+The detail view shows Dean Oliver's Four Factors (eFG%, TOV%, ORB%, FT Rate) in the team comparison bar, a plaintextsports-inspired ASCII game flow chart showing scoring runs, and a lead changes/ties summary.
 
-- **cdn.nba.com** — the live "today" scoreboard
-- **stats.nba.com** — scoreboard by date, traditional box scores,
-  play-by-play, and league standings
+## Data
 
-These are unofficial, undocumented endpoints, so there's **no API key or
-account required** but they can change or rate-limit without notice. Live
-games auto-refresh roughly every 15 seconds.
+Pulls from the NBA's public JSON endpoints (cdn.nba.com for live data, stats.nba.com for historical) via [`nba-sdk`](https://github.com/NolanFogarty/nba-sdk). No API key needed.
 
-## Installation
+## Install
 
-### Install from source
+```bash
+go install github.com/NolanFogarty/courtside@latest
+```
+
+Or build from source:
 
 ```bash
 git clone https://github.com/NolanFogarty/courtside.git
@@ -30,53 +27,30 @@ go build -o courtside
 sudo mv courtside /usr/local/bin/
 ```
 
-### Install with go install
-
-```bash
-go install github.com/NolanFogarty/courtside@latest
-```
-
-## Usage
-
-```bash
-courtside
-```
-
-The app opens on today's games. Everything is keyboard-driven:
-
-### Game list
+## Keys
 
 | Key | Action |
 | --- | --- |
-| `↑`/`k`, `↓`/`j` | Move between games |
-| `enter` | Open the selected game's details |
-| `←`/`h`, `→`/`l` | Previous / next day |
-| `d` | Jump to a specific date |
-| `s` | League standings |
-| `/` | Filter games |
-| `q` | Quit |
-
-### Game details
-
-| Key | Action |
-| --- | --- |
-| `↑`/`k`, `↓`/`j` | Scroll the play-by-play feed |
+| `↑/k`, `↓/j` | Navigate / scroll |
+| `enter` | Open game detail |
+| `←/h`, `→/l` | Previous / next day |
+| `d` | Jump to date |
+| `s` | Standings |
 | `o` | Toggle expanded stats |
-| `q`/`esc` | Back to the game list |
+| `t` | Toggle dark/light theme |
+| `/` | Filter games |
+| `q`/`esc` | Back / quit |
 
-### Standings
+## Customizations
 
-| Key | Action |
-| --- | --- |
-| `q`/`esc` | Back to the game list |
+Forked from [NolanFogarty/courtside](https://github.com/NolanFogarty/courtside) and personalized with:
 
-## Screenshots
+- Team-specific colors (each team renders in their brand color)
+- Quarter linescores in the game list
+- Four Factors + advanced team stats in the comparison bar
+- ASCII game flow chart (plaintextsports-style dot chart)
+- Lead changes / ties / biggest lead summary
+- Player stat leaders row per team
+- Dark/light theme toggle
 
-### Game List
-![Game list view](images/gamelist.png)
-
-### Game Details
-![Detailed game view](images/detailed_view.png)
-
-### Standings
-![Standings view](images/standings.png)
+Built with [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lipgloss](https://github.com/charmbracelet/lipgloss).
