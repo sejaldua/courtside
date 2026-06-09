@@ -24,6 +24,21 @@ func (i item) Title() string       { return i.title }
 func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string { return i.title }
 
+// periodScoreLine builds a compact linescore like "28 31 24 29" for a finished game.
+func periodScoreLine(g backend.Game) string {
+	if g.NotStarted() || len(g.HomePeriods) == 0 {
+		return ""
+	}
+	var parts []string
+	for i := range g.AwayPeriods {
+		if i >= len(g.HomePeriods) {
+			break
+		}
+		parts = append(parts, fmt.Sprintf("%2d-%2d", g.AwayPeriods[i], g.HomePeriods[i]))
+	}
+	return strings.Join(parts, "  ")
+}
+
 type gamelist struct {
 	list     list.Model
 	day      time.Time // the date currently being viewed
@@ -296,6 +311,7 @@ func (m gamelist) View() tea.View {
 			[2]string{"→/l", "next day"},
 			[2]string{"d", "date"},
 			[2]string{"s", "standings"},
+			[2]string{"t", "theme"},
 			[2]string{"q", "quit"},
 		)
 
@@ -317,10 +333,20 @@ func (m gamelist) View() tea.View {
 }
 
 func formatGame(g backend.Game) item {
-	scoreboard := fmt.Sprintf("%-13s %3d - %-3d %13s", g.AwayTeam, g.AwayScore, g.HomeScore, g.HomeTeam)
-	pad := (len(scoreboard) - len(g.GameClock)) / 2
-	clock := fmt.Sprintf("%*s", pad+len(g.GameClock), g.GameClock)
-	return item{title: scoreboard, desc: clock, game: g}
+	awaySty := lipgloss.NewStyle().Foreground(teamColor(g.AwayTricode))
+	homeSty := lipgloss.NewStyle().Foreground(teamColor(g.HomeTricode))
+
+	awayName := awaySty.Render(fmt.Sprintf("%-13s", g.AwayTeam))
+	homeName := homeSty.Render(fmt.Sprintf("%13s", g.HomeTeam))
+	scoreboard := fmt.Sprintf("%s %3d - %-3d %s", awayName, g.AwayScore, g.HomeScore, homeName)
+
+	// Build description: clock/status + quarter scores for finished/live games
+	desc := g.GameClock
+	if line := periodScoreLine(g); line != "" {
+		desc += "   " + line
+	}
+
+	return item{title: scoreboard, desc: desc, game: g}
 }
 
 func newGamesList(games []backend.Game) gamelist {
@@ -348,6 +374,7 @@ func newGamesList(games []backend.Game) gamelist {
 		key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", "next day")),
 		key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "date")),
 		key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "standings")),
+		key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "theme")),
 	}
 	m.list.AdditionalShortHelpKeys = func() []key.Binding { return dayKeys }
 	m.list.AdditionalFullHelpKeys = func() []key.Binding { return dayKeys }

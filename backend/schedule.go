@@ -51,14 +51,27 @@ func scoreboardGame(g stats.ScoreboardV3Game) Game {
 		clock = strings.TrimSpace(g.GameStatusText)
 	}
 
+	homePeriods := make([]int, len(g.HomeTeam.Periods))
+	for i, p := range g.HomeTeam.Periods {
+		homePeriods[i] = p.Score
+	}
+	awayPeriods := make([]int, len(g.AwayTeam.Periods))
+	for i, p := range g.AwayTeam.Periods {
+		awayPeriods[i] = p.Score
+	}
+
 	return Game{
-		GameId:    g.GameID,
-		HomeTeam:  g.HomeTeam.TeamName,
-		AwayTeam:  g.AwayTeam.TeamName,
-		HomeScore: g.HomeTeam.Score,
-		AwayScore: g.AwayTeam.Score,
-		GameClock: clock,
-		status:    g.GameStatus,
+		GameId:      g.GameID,
+		HomeTeam:    g.HomeTeam.TeamName,
+		AwayTeam:    g.AwayTeam.TeamName,
+		HomeTricode: g.HomeTeam.TeamTricode,
+		AwayTricode: g.AwayTeam.TeamTricode,
+		HomeScore:   g.HomeTeam.Score,
+		AwayScore:   g.AwayTeam.Score,
+		HomePeriods: homePeriods,
+		AwayPeriods: awayPeriods,
+		GameClock:   clock,
+		status:      g.GameStatus,
 	}
 }
 

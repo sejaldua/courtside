@@ -43,10 +43,12 @@ type TeamDetail struct {
 // PlayLine is a single play-by-play event. Team is the tricode, empty for
 // neutral events (timeouts, period boundaries, etc.).
 type PlayLine struct {
-	Period int
-	Clock  string // "MM:SS"
-	Team   string
-	Desc   string
+	Period    int
+	Clock     string // "MM:SS"
+	Team      string
+	Desc      string
+	ScoreAway int
+	ScoreHome int
 }
 
 // GameDetail is everything the detail screen needs for one game.
@@ -103,31 +105,38 @@ func fetchBoxScore(client *nba.Client, ctx context.Context, gameID string) (Game
 // feed and falling back to stats.nba.com. Returns nil if both are unavailable.
 func fetchPlayByPlay(client *nba.Client, ctx context.Context, gameID string) []PlayLine {
 	if pbp, err := client.Live.PlayByPlay(ctx, gameID); err == nil && len(pbp.Game.Actions) > 0 {
-		return playLines(len(pbp.Game.Actions), func(i int) (int, string, string, string) {
+		return playLines(len(pbp.Game.Actions), func(i int) (int, string, string, string, string, string) {
 			a := pbp.Game.Actions[i]
-			return a.Period, a.Clock, a.TeamTricode, a.Description
+			return a.Period, a.Clock, a.TeamTricode, a.Description, a.ScoreAway, a.ScoreHome
 		})
 	}
 	if pbp, err := client.Stats.PlayByPlayV3(ctx, gameID); err == nil {
-		return playLines(len(pbp.Game.Actions), func(i int) (int, string, string, string) {
+		return playLines(len(pbp.Game.Actions), func(i int) (int, string, string, string, string, string) {
 			a := pbp.Game.Actions[i]
-			return a.Period, a.Clock, a.TeamTricode, a.Description
+			return a.Period, a.Clock, a.TeamTricode, a.Description, a.ScoreAway, a.ScoreHome
 		})
 	}
 	return nil
 }
 
+func atoi(s string) int {
+	n, _ := strconv.Atoi(s)
+	return n
+}
+
 // playLines projects n play-by-play actions (oldest-first) into newest-first
 // PlayLines using the supplied accessor.
-func playLines(n int, at func(i int) (period int, clock, team, desc string)) []PlayLine {
+func playLines(n int, at func(i int) (period int, clock, team, desc, scoreAway, scoreHome string)) []PlayLine {
 	out := make([]PlayLine, 0, n)
 	for i := n - 1; i >= 0; i-- {
-		period, clock, team, desc := at(i)
+		period, clock, team, desc, sa, sh := at(i)
 		out = append(out, PlayLine{
-			Period: period,
-			Clock:  parseGameClock(clock),
-			Team:   team,
-			Desc:   desc,
+			Period:    period,
+			Clock:     parseGameClock(clock),
+			Team:      team,
+			Desc:      desc,
+			ScoreAway: atoi(sa),
+			ScoreHome: atoi(sh),
 		})
 	}
 	return out

@@ -82,7 +82,7 @@ func (m standings) View() tea.View {
 	}
 
 	body := lipgloss.JoinVertical(lipgloss.Left, title, "", main)
-	hint := renderHints([2]string{"q", "back"})
+	hint := renderHints([2]string{"t", "theme"}, [2]string{"q", "back"})
 
 	spacerH := m.height - vFrame - lipgloss.Height(body) - lipgloss.Height(hint)
 	if spacerH < 1 {

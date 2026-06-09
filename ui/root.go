@@ -50,6 +50,16 @@ func (r root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return r, tea.Quit
 	}
 
+	// Theme toggle from anywhere (except when typing in filter/date input)
+	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "t" {
+		canToggle := r.current != listview ||
+			(r.list.list.FilterState() != list.Filtering && !r.list.entering)
+		if canToggle {
+			toggleTheme()
+			return r, nil
+		}
+	}
+
 	// Keep all sub-views sized regardless of which is active.
 	if ws, ok := msg.(tea.WindowSizeMsg); ok {
 		r.width, r.height = ws.Width, ws.Height
