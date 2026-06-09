@@ -21,6 +21,12 @@ const refreshInterval = 15 * time.Second
 // refreshTickMsg is the periodic heartbeat that drives auto-refresh.
 type refreshTickMsg struct{}
 
+// leagueSwitchedMsg carries the reloaded games after a league toggle.
+type leagueSwitchedMsg struct {
+	games []backend.Game
+	err   error
+}
+
 func refreshTick() tea.Cmd {
 	return tea.Tick(refreshInterval, func(time.Time) tea.Msg { return refreshTickMsg{} })
 }
@@ -60,6 +66,23 @@ func (r root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// League toggle (w key) from list view when not filtering/entering
+	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "w" {
+		canToggle := r.current == listview &&
+			r.list.list.FilterState() != list.Filtering && !r.list.entering
+		if canToggle {
+			if backend.CurrentLeague == backend.NBA {
+				backend.CurrentLeague = backend.WNBA
+			} else {
+				backend.CurrentLeague = backend.NBA
+			}
+			return r, func() tea.Msg {
+				games, err := backend.GetTodaysGames()
+				return leagueSwitchedMsg{games: games, err: err}
+			}
+		}
+	}
+
 	// Keep all sub-views sized regardless of which is active.
 	if ws, ok := msg.(tea.WindowSizeMsg); ok {
 		r.width, r.height = ws.Width, ws.Height
@@ -84,6 +107,15 @@ func (r root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return r, tea.Batch(cmd, refreshTick())
 		}
 		return r, refreshTick()
+	}
+
+	// League switch: reload the game list with the new league's data.
+	if m, ok := msg.(leagueSwitchedMsg); ok {
+		if m.err == nil && m.games != nil {
+			r.list = newGamesList(m.games)
+			r.list.list.SetSize(r.width, r.height)
+		}
+		return r, nil
 	}
 
 	// Day navigation messages always belong to the list, even if the user has

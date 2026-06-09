@@ -40,8 +40,28 @@ var teamColorHex = map[string]string{
 	"WAS": "#002B5C",
 }
 
+// WNBA team tricodes to their primary brand color.
+var wnbaColorHex = map[string]string{
+	"ATL":  "#CC092F",
+	"CHI":  "#418FDE",
+	"CON":  "#F05023",
+	"DAL":  "#C4D600",
+	"GS":   "#552583",
+	"IND":  "#002D62",
+	"LVA":  "#000000",
+	"LA":   "#552583",
+	"MIN":  "#236192",
+	"NYL":  "#6ECEB2",
+	"PHX":  "#CB6015",
+	"SEA":  "#2C5234",
+	"WAS":  "#E31837",
+}
+
 func teamColor(tricode string) color.Color {
 	if hex, ok := teamColorHex[tricode]; ok {
+		return lipgloss.Color(hex)
+	}
+	if hex, ok := wnbaColorHex[tricode]; ok {
 		return lipgloss.Color(hex)
 	}
 	return lipgloss.Color("247")

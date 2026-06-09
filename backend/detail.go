@@ -64,6 +64,9 @@ type GameDetail struct {
 // removed). stats.nba.com is known to return empty/5xx for live games, so the
 // CDN-first order matters.
 func GetGameDetail(gameID string) (GameDetail, error) {
+	if CurrentLeague == WNBA {
+		return getWNBAGameDetail(gameID)
+	}
 	client := nba.NewClient()
 	ctx := context.Background()
 
@@ -72,9 +75,27 @@ func GetGameDetail(gameID string) (GameDetail, error) {
 		return GameDetail{}, err
 	}
 
-	// Play-by-play is best-effort; an unavailable feed shouldn't block the box
-	// score. The next refresh retries.
 	d.Plays = fetchPlayByPlay(client, ctx, gameID)
+	return d, nil
+}
+
+func getWNBAGameDetail(gameID string) (GameDetail, error) {
+	box, err := wnbaBoxScore(gameID)
+	if err != nil {
+		return GameDetail{}, err
+	}
+	g := box.Game
+	d := GameDetail{
+		Away: liveTeamDetail(g.AwayTeam),
+		Home: liveTeamDetail(g.HomeTeam),
+	}
+
+	if pbp, err := wnbaPlayByPlay(gameID); err == nil && len(pbp.Game.Actions) > 0 {
+		d.Plays = playLines(len(pbp.Game.Actions), func(i int) (int, string, string, string, string, string) {
+			a := pbp.Game.Actions[i]
+			return a.Period, a.Clock, a.TeamTricode, a.Description, a.ScoreAway, a.ScoreHome
+		})
+	}
 	return d, nil
 }
 

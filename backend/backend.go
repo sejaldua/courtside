@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	nba "github.com/NolanFogarty/nba-sdk"
 	"github.com/NolanFogarty/nba-sdk/live"
 )
 
@@ -92,8 +91,14 @@ func toGame(g live.Game) Game {
 // todaysGames fetches today's scoreboard and returns only the games whose
 // status passes keep.
 func todaysGames(keep func(status int) bool) []Game {
-	client := nba.NewClient()
-	resp, err := client.Live.Scoreboard(context.Background())
+	var resp *live.ScoreboardResponse
+	var err error
+	if CurrentLeague == WNBA {
+		resp, err = wnbaLiveScoreboard()
+	} else {
+		client := newClient()
+		resp, err = client.Live.Scoreboard(context.Background())
+	}
 	if err != nil {
 		panic(err)
 	}
@@ -127,8 +132,14 @@ func GetLiveGames() []Game {
 // routes today's date here so the navigated "today" view matches the initial
 // one instead of using the staler scoreboardv2 schedule.
 func GetTodaysGames() ([]Game, error) {
-	client := nba.NewClient()
-	resp, err := client.Live.Scoreboard(context.Background())
+	var resp *live.ScoreboardResponse
+	var err error
+	if CurrentLeague == WNBA {
+		resp, err = wnbaLiveScoreboard()
+	} else {
+		client := newClient()
+		resp, err = client.Live.Scoreboard(context.Background())
+	}
 	if err != nil {
 		return nil, err
 	}

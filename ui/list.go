@@ -248,7 +248,7 @@ func (m gamelist) title() string {
 	if sameDay(m.day, nbaToday()) {
 		label = "Today · " + label
 	}
-	t := "NBA Scores — " + label
+	t := backend.CurrentLeague.String() + " Scores — " + label
 	switch {
 	case m.loading:
 		t += "  (loading…)"
@@ -311,6 +311,7 @@ func (m gamelist) View() tea.View {
 			[2]string{"→/l", "next day"},
 			[2]string{"d", "date"},
 			[2]string{"s", "standings"},
+			[2]string{"w", "NBA/WNBA"},
 			[2]string{"t", "theme"},
 			[2]string{"q", "quit"},
 		)
@@ -374,6 +375,7 @@ func newGamesList(games []backend.Game) gamelist {
 		key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", "next day")),
 		key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "date")),
 		key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "standings")),
+		key.NewBinding(key.WithKeys("w"), key.WithHelp("w", "NBA/WNBA")),
 		key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "theme")),
 	}
 	m.list.AdditionalShortHelpKeys = func() []key.Binding { return dayKeys }

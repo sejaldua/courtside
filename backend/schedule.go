@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	nba "github.com/NolanFogarty/nba-sdk"
 	"github.com/NolanFogarty/nba-sdk/stats"
 )
 
@@ -25,10 +24,16 @@ func GetGamesForDate(date string) ([]Game, error) {
 		return nil, err
 	}
 
-	client := nba.NewClient()
-	resp, err := client.Stats.ScoreboardV3(context.Background(), d)
-	if err != nil {
-		return nil, err
+	var resp *stats.ScoreboardV3Response
+	var err2 error
+	if CurrentLeague == WNBA {
+		resp, err2 = wnbaScoreboardV3(d)
+	} else {
+		client := newClient()
+		resp, err2 = client.Stats.ScoreboardV3(context.Background(), d)
+	}
+	if err2 != nil {
+		return nil, err2
 	}
 
 	games := make([]Game, 0, len(resp.Scoreboard.Games))

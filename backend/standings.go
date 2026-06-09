@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	nba "github.com/NolanFogarty/nba-sdk"
+	"github.com/NolanFogarty/nba-sdk/stats"
 )
 
 // Standing is one team's row in the conference standings.
@@ -34,14 +34,25 @@ type Standings struct {
 // GetStandings fetches the current regular-season standings.
 func GetStandings() (Standings, error) {
 	season := currentSeason()
-	client := nba.NewClient()
-	resp, err := client.Stats.LeagueStandingsV3(context.Background(), season)
-	if err != nil {
-		return Standings{}, err
+
+	var teams []stats.TeamStanding
+	if CurrentLeague == WNBA {
+		r, err := wnbaStandings(season)
+		if err != nil {
+			return Standings{}, err
+		}
+		teams = r.Standings
+	} else {
+		client := newClient()
+		r, err := client.Stats.LeagueStandingsV3(context.Background(), season)
+		if err != nil {
+			return Standings{}, err
+		}
+		teams = r.Standings
 	}
 
 	out := Standings{Season: season}
-	for _, t := range resp.Standings {
+	for _, t := range teams {
 		s := Standing{
 			Rank:      t.PlayoffRank,
 			Team:      t.TeamName,
@@ -76,18 +87,22 @@ func clinchMark(indicator string) string {
 	return f[len(f)-1]
 }
 
-// currentSeason returns the NBA season string ("YYYY-YY") for today (ET). The
-// season starts in October.
+// currentSeason returns the season string for the active league.
+// NBA: "YYYY-YY" (season starts in October, e.g. "2025-26").
+// WNBA: "YYYY" (season runs May-September within one calendar year, e.g. "2025").
 func currentSeason() string {
 	now := time.Now()
 	if loc, err := time.LoadLocation("America/New_York"); err == nil {
 		now = now.In(loc)
 	}
 	year := now.Year()
+
+	if CurrentLeague == WNBA {
+		return fmt.Sprintf("%d", year)
+	}
+
 	if now.Month() < time.October {
-		// e.g. May 2026 → "2025-26"
 		return fmt.Sprintf("%d-%02d", year-1, year%100)
 	}
-	// e.g. October 2026 → "2026-27"
 	return fmt.Sprintf("%d-%02d", year, (year+1)%100)
 }
